@@ -1,255 +1,152 @@
 # DDV Save Editor - Python Version
 
-A modern, Python-based save editor for Disney Dreamlight Valley with dynamic Excel data loading and enhanced image support.
+A modern, comprehensive save file editor for Disney Dreamlight Valley, rebuilt in Python with advanced features and enhanced functionality.
 
-## Features
+## ✨ Key Features
 
-### 🎮 Save File Support
-- ✅ Load and save encrypted DDV save files
-- ✅ Automatic decryption with hex key input
-- ✅ Automatic backup creation before changes
-- ✅ Save file validation and integrity checking
+### 🚀 **Smart Save Detection**
+- **Automatic Detection**: Finds your latest save file automatically by timestamp
+- **Multi-Platform Support**: Works with Steam and Windows Store versions  
+- **Enhanced Logging**: Detailed file information and loading progress
+- **Manual Override**: Option to select specific save files when needed
 
-### 📊 Dynamic Data Loading
-- ✅ Load item data from Excel files (no hardcoded lists!)
-- ✅ Automatic category detection from worksheet names
-- ✅ Real-time data refresh when Excel file changes
-- ✅ Support for custom item properties and metadata
+### 🔐 **Advanced Encryption Handling**
+- **Auto-Decryption**: Uses known DDV encryption keys automatically
+- **Custom Key Support**: Handles custom decryption keys
+- **File Validation**: Robust encryption detection and error handling
 
-### 🖼️ Enhanced Image Support
-- ✅ Load images from ZIP files or folder structure
-- ✅ Smart image fallback with placeholder generation
-- ✅ Multiple image format support (PNG, JPG, etc.)
-- ✅ Image caching for improved performance
+### 📊 **Comprehensive Item Management**
+- **16 Categories**: Detailed organization with granular subcategories
+  - **Pets**: All companion animals
+  - **Clothes**: Outfits, Tops, Bottoms, Helmets, Shoes, Accessories, Other
+  - **Houses**: Skins, Wallpapers, Floors, NPC Houses
+  - **Furniture**: All decorative items
+  - **Tools**: Pickaxes, shovels, fishing rods, etc.
+  - **Food & Materials**: Consumables and crafting components
 
-### 💰 Currency Editing
-- ✅ Edit all game currencies (Star Coins, Dreamlight, etc.)
-- ✅ Quick max/reset buttons for each currency
-- ✅ Player name and level editing
+### 🎨 **Smart Content Filtering**
+- **Quality Control**: Automatically filters out debug/problematic items
+- **Color-Coded Rules**: 
+  - 🔴 Red cells = Filtered out (broken/test items)
+  - 🟡 Yellow cells = Limited to 1 item maximum
+  - 🔵 Blue cells = Completely hidden from interface
+- **Excel Integration**: Loads complete item database from spreadsheet
 
-### 🎁 Item Management
-- ✅ Add/remove items by category (Pets, Clothes, Houses, etc.)
-- ✅ Bulk operations (add all, clear all)
-- ✅ Item quantity editing
-- ✅ Search and filter functionality
+### 💰 **Currency Editor**
+- Edit all currencies: Star Coins, Dreamlight, Daisy Coins, Mist, Pixel Dust
+- Player information editing (name, level)
+- Quick max/reset buttons with validation
 
-### 🔧 Modern UI
-- ✅ Clean, intuitive interface built with tkinter
-- ✅ Tabbed interface for different item categories
-- ✅ Real-time search across all items
-- ✅ Settings dialog for configuration
-- ✅ Progress indicators for long operations
+### 🎨 **Modern Interface**
+- Clean, intuitive design
+- Real-time progress indicators
+- Comprehensive logging and status updates
+- Image preview support for items
 
-## Installation
+## 🛠️ Installation
 
-### Prerequisites
-- Python 3.8 or higher
-- pip (Python package installer)
-
-### Install from Source
-
-1. **Clone or download the project**
+### Quick Start
 ```bash
-git clone https://github.com/yourusername/ddv-save-editor-python.git
-cd ddv-save-editor-python
-```
-
-2. **Install dependencies**
-```bash
+git clone https://github.com/Nassbrock/DDV-Save-Editor.git
+cd DDV-Save-Editor
+python -m venv venv
+venv\Scripts\activate          # Windows
 pip install -r requirements.txt
-```
-
-3. **Run the application**
-```bash
 python main.py
 ```
 
-### Install as Package
+### Requirements
+- Python 3.8 or higher
+- Windows 10/11 (primary support)
 
-```bash
-pip install -e .
-ddv-editor
-```
+## 📖 Usage
 
-### Create Executable (PyInstaller)
+### Getting Started
+1. **Launch**: Run `python main.py`
+2. **Auto-Load**: Click "Auto-Load" - the app will find your latest save automatically
+3. **Edit**: Use the category tabs to modify items, currencies, and player data
+4. **Save**: Click "Save" to write changes back to your save file
 
-```bash
-pip install pyinstaller
-pyinstaller --onefile --windowed main.py
-```
+### Advanced Features
+- **Manual Loading**: Use "Manual Load" if auto-detection doesn't work
+- **Detailed Logs**: Check console output for comprehensive operation details
+- **Backup System**: Automatic timestamped backups before any changes
 
-## Setup Guide
+## 🔍 What's New in Python Version
 
-### 1. Prepare Data Files
+### 🚀 **Enhanced Performance**
+- Faster save file detection and loading
+- Efficient Excel parsing with color detection
+- Smart caching for images and data
 
-#### Excel File
-- Copy your `Disney Dream Light ID List - Mainted by Rubyelf.xlsx` to the project directory
-- Or use File → Load Excel Data to browse for it
-- The file should have worksheets named: `pets`, `clothes`, `houses`, etc.
-- Required columns: `ID` (or `ItemID`) and `Name` (or `ItemName`)
+### 🧠 **Intelligent Features**
+- **Automatic Save Selection**: Finds most recent save across all game installations
+- **Smart Item Filtering**: Removes test/debug items automatically
+- **Quality Limits**: Respects game item limitations (1-max items, filtered categories)
 
-#### Images
-Choose one of these options:
+### 📊 **Better Data Handling**
+- **Live Excel Integration**: No hardcoded item lists
+- **Category Intelligence**: Maps Excel categories to logical game groupings
+- **Error Recovery**: Robust handling of corrupted or incomplete data
 
-**Option A: ZIP File (Recommended)**
-- Place `img.zip` in the project directory
-- Organize images by category: `pets/12345.png`, `clothes/54321.png`
+### 🔧 **Developer Improvements**
+- **Modern Architecture**: Clean separation of concerns
+- **Comprehensive Logging**: Every operation is logged for debugging
+- **Type Safety**: Full type hints and validation
+- **Extensible Design**: Easy to add new features and categories
 
-**Option B: Folder Structure**
-- Create `img/` folder in project directory
-- Create subfolders: `img/pets/`, `img/clothes/`, etc.
-- Place images with item ID as filename: `12345.png`
-
-### 2. Run the Application
-
-1. **Start the application**: `python main.py`
-2. **Load Excel data**: The app will automatically load the Excel file
-3. **Load a save file**: File → Load Save File (or auto-detect common locations)
-4. **Enter decryption key** if prompted (for encrypted saves)
-5. **Edit items and currencies** using the tabbed interface
-6. **Save changes**: File → Save
-
-## Usage Guide
-
-### Loading a Save File
-
-1. **Automatic Detection**: The app will try to find your save file in common locations
-2. **Manual Selection**: Use File → Load Save File to browse
-3. **Encrypted Files**: Enter the hex decryption key when prompted
-4. **Backup**: A backup is automatically created before loading
-
-### Editing Items
-
-1. **Select Category**: Click on tabs (Pets, Clothes, Houses, etc.)
-2. **Add Items**: 
-   - Double-click items in the "Available Items" list
-   - Or select items and click "Add Selected"
-   - Or click "Add All" to add everything
-3. **Edit Quantities**: Double-click items in "Items in Save" list
-4. **Remove Items**: Select items and click "Remove Selected"
-5. **Search**: Use search boxes to filter items
-
-### Editing Currencies
-
-1. **Go to Currencies tab**
-2. **Edit values** directly in the number fields
-3. **Use Quick Buttons**: "Max" to set maximum, "Reset" to set zero
-4. **Apply Changes**: Click "Apply Changes" to update save data
-
-### Settings
-
-Access via Edit → Settings:
-
-- **File Paths**: Configure Excel and image file locations
-- **Images**: Adjust cache size and image quality settings
-- **Backups**: Configure automatic backup behavior
-
-## File Structure
+## 📁 Project Structure
 
 ```
 ddv_save_editor_python/
-├── main.py                 # Main entry point
-├── requirements.txt        # Python dependencies
-├── setup.py               # Package setup script
-├── README.md              # This file
-│
 ├── src/
-│   ├── models/
-│   │   └── game_item.py   # Data models (GameItem, SaveData, etc.)
-│   │
-│   ├── services/
-│   │   ├── excel_service.py    # Excel file reading
-│   │   ├── image_service.py    # Image loading and caching
-│   │   └── save_service.py     # Save file handling
-│   │
-│   └── gui/
-│       ├── main_window.py      # Main application window
-│       ├── item_editor.py      # Item editing interface
-│       ├── currency_editor.py  # Currency editing interface
-│       └── settings_dialog.py  # Settings configuration
-│
-├── backups/               # Automatic save backups (created at runtime)
-├── img/                   # Image folder (optional)
-├── img.zip               # Image ZIP file (optional)
-└── Disney Dream Light ID List - Mainted by Rubyelf.xlsx
+│   ├── gui/              # UI components (main window, editors, dialogs)
+│   ├── services/         # Core services (save, excel, image handling)  
+│   └── models/           # Data models and validation
+├── backups/              # Automatic save backups (created at runtime)
+├── requirements.txt      # Python dependencies
+├── main.py              # Application entry point
+└── img.zip              # Item images (optional)
 ```
 
-## Advantages Over C# Version
+## 🚨 Safety Features
 
-### ✅ Development Benefits
-- **Simpler Setup**: No Visual Studio or .NET Framework required
-- **Cross-Platform**: Works on Windows, Mac, and Linux
-- **Better Libraries**: Pandas for Excel, PIL for images, cryptography for security
-- **Easier Distribution**: Single executable with PyInstaller
+- **Automatic Backups**: Creates timestamped backups before any changes
+- **Data Validation**: Ensures save file integrity using Pydantic models
+- **Error Recovery**: Comprehensive error handling with detailed logging
+- **Non-Destructive**: Original files are preserved
 
-### ✅ User Benefits
-- **Dynamic Data**: No recompilation needed for new items
-- **Better Performance**: Efficient caching and async operations
-- **Modern UI**: Clean, responsive interface
-- **Enhanced Features**: Advanced search, better error handling
+## 🆚 Advantages Over C# Version
 
-### ✅ Maintenance Benefits
-- **Cleaner Code**: Better separation of concerns
-- **Easier Testing**: Built-in testing frameworks
-- **Better Error Handling**: Comprehensive exception handling
-- **Logging**: Built-in logging for troubleshooting
+### ✅ **User Experience**
+- **Smarter**: Automatic save detection, intelligent filtering
+- **Faster**: Optimized loading and processing
+- **Safer**: Better error handling and recovery
+- **More Informative**: Detailed logging and progress feedback
 
-## Troubleshooting
+### ✅ **Technical Improvements**
+- **Cross-Platform**: Works on Windows, Mac, Linux
+- **Modern Libraries**: pandas, openpyxl, Pillow, cryptography
+- **Better Architecture**: Clean, maintainable code structure
+- **Type Safety**: Full type hints and validation
 
-### Common Issues
+### ✅ **Feature Rich**
+- **Dynamic Data**: Excel-driven item database
+- **Smart Filtering**: Automatic problem item detection
+- **Enhanced Categories**: 16 granular categories vs basic grouping
+- **Quality Controls**: Respects game limitations and rules
 
-#### "Module not found" errors
-```bash
-pip install -r requirements.txt
-```
+## 🤝 Contributing
 
-#### "Excel file not found"
-- Check if the file exists in the project directory
-- Use File → Load Excel Data to browse for it
-- Verify the file isn't corrupted
+Contributions welcome! The codebase is designed to be easily extensible:
+- **Add Categories**: Extend the `ItemCategory` enum
+- **New Features**: Clean service architecture makes additions straightforward  
+- **Bug Fixes**: Comprehensive logging makes debugging easier
 
-#### "Images not loading"
-- Check if `img.zip` exists OR `img/` folder exists
-- Verify image filenames match item IDs
-- Try clearing image cache: Tools → Clear Image Cache
+## ⚠️ Disclaimer
 
-#### "Decryption failed"
-- Verify the hex key is correct
-- Check that the save file isn't corrupted
-- Try using an unencrypted save file first
+This tool modifies game save files. While it includes extensive safety features like automatic backups and validation, always backup your saves manually before use.
 
-### Debug Mode
+## 📜 License
 
-Run with debug logging:
-```bash
-python -c "import logging; logging.basicConfig(level=logging.DEBUG)" main.py
-```
-
-Check `ddv_editor.log` for detailed error information.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgments
-
-- Original C# version contributors
-- Disney Dreamlight Valley community
-- EPPlus and other library maintainers
-- Beta testers and feedback providers
-
-## Support
-
-- Create an issue on GitHub for bugs or feature requests
-- Check the log file (`ddv_editor.log`) for error details
-- Include your Python version and OS when reporting issues
-#   D D V - S a v e - E d i t o r  
- 
+MIT License - see LICENSE file for details.
