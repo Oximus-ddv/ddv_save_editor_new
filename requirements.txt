@@ -1,0 +1,13 @@
+pandas
+openpyxl
+pydantic
+Pillow
+cryptography
+PySide6
+python-magic-bin
+python-decouple
+pathlib
+typing-extensions
+PyInstaller
+black
+pytest
