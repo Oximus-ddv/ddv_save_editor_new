@@ -2,6 +2,14 @@
 
 A modern, comprehensive save file editor for Disney Dreamlight Valley, rebuilt in Python with advanced features and enhanced functionality.
 
+## What the app does (quick summary)
+
+- Edit DDV save files safely (with automatic backups).
+- Load a live item database from an Excel spreadsheet and organize items into friendly categories/subcategories.
+- Add/remove items, adjust amounts, and fully edit pets (CustomName, FriendshipLevel, XP).
+- Edit currencies and player info.
+- Filter out problematic/debug items automatically.
+
 ## ✨ Key Features
 
 ### 🚀 **Smart Save Detection**
@@ -135,6 +143,45 @@ ddv_save_editor_python/
 - **Smart Filtering**: Automatic problem item detection
 - **Enhanced Categories**: 16 granular categories vs basic grouping
 - **Quality Controls**: Respects game limitations and rules
+
+## 🪟 Using the Windows .exe with the Excel file
+
+The app needs your Excel data file to populate categories and items. When running the packaged `.exe`, place the Excel next to the executable or select it when prompted.
+
+### Recommended folder layout
+
+```
+release/
+  DDV_Save_Editor.exe
+  Disney Dream Light ID List - Mainted by Rubyelf.xlsx   # or your own data file
+  img.zip                                               # optional (item images)
+```
+
+### First run
+
+- If the Excel is not found, the app will prompt you to select it. Pick your `.xlsx` and the categories will load.
+- After selecting once, the app caches data in memory for the session; reloading Excel uses the same picker.
+
+### Auto-Load save
+
+1. Click "Auto-Load" to detect and load the latest DDV save.
+2. If categories are empty, ensure the Excel file is available as described above, then use "Refresh Excel Data" or restart the app.
+
+### Decryption key
+
+- The standard DDV hex key is built in.
+- You can override it (useful for custom encrypted saves) by setting an environment variable before launching the `.exe`:
+
+```
+set DDV_HEX_KEY=62 35 71 68 68 38 73 61 ... 6E 35
+DDV_Save_Editor.exe
+```
+
+### Troubleshooting
+
+- **Categories don’t load**: The Excel file is missing/not found. Place the `.xlsx` next to the `.exe` or select it when prompted.
+- **Images not showing**: Ensure `img.zip` or an `img/` folder exists if you want item images (optional).
+- **Auto-Load finds no save**: Use "Manual Load" and browse to your `profile.json` (Steam/Windows folders).
 
 ## 🤝 Contributing
 

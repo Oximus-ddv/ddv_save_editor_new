@@ -3,6 +3,7 @@ Main GUI window for DDV Save Editor
 """
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
+from tkinter import font as tkfont
 from pathlib import Path
 import logging
 from typing import Optional, Dict, Any
@@ -11,6 +12,7 @@ import threading
 from ..services.excel_service import ExcelDataService
 from ..services.image_service import ImageService
 from ..services.save_service import SaveFileService
+from ..services.augmentation_service import augment_save_dict
 from ..models.game_item import GameDatabase, ItemCategory
 from .item_editor import ItemEditorFrame
 from .currency_editor import CurrencyEditorFrame
@@ -28,6 +30,9 @@ class MainWindow:
         self.root.title("DDV Save Editor - Python")
         self.root.geometry("1200x800")
         
+        # Visual theme and scaling first
+        self.setup_theme()
+
         # Services
         self.excel_service = ExcelDataService()
         self.image_service = ImageService()
@@ -81,6 +86,8 @@ class MainWindow:
         tools_menu.add_command(label="Backup Manager...", command=self.show_backup_manager)
         tools_menu.add_command(label="Validate Save File", command=self.validate_save_file)
         tools_menu.add_command(label="Clear Image Cache", command=self.clear_image_cache)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="Augment Save (legacy dicts)", command=self.augment_save_with_legacy_dicts)
         
         # Help menu
         help_menu = tk.Menu(self.menubar, tearoff=0)
@@ -90,6 +97,62 @@ class MainWindow:
         # Keyboard shortcuts
         self.root.bind('<Control-s>', lambda e: self.save_file())
         self.root.bind('<F5>', lambda e: self.refresh_excel_data())
+
+    def setup_theme(self):
+        """Set a modern ttk theme, fonts, and scaling for a cleaner look"""
+        try:
+            # High-DPI friendly scaling
+            try:
+                # Lightly upscale for readability on modern displays
+                current = float(self.root.tk.call('tk', 'scaling'))
+                if current < 1.25:
+                    self.root.tk.call('tk', 'scaling', 1.25)
+            except Exception:
+                pass
+
+            style = ttk.Style(self.root)
+            # Prefer native Windows theme if available, fallback to 'clam'
+            preferred = 'vista' if 'vista' in style.theme_names() else 'clam'
+            style.theme_use(preferred)
+
+            # Set application fonts to Segoe UI (Windows) or default
+            try:
+                default_font = tkfont.nametofont('TkDefaultFont')
+                text_font = tkfont.nametofont('TkTextFont')
+                fixed_font = tkfont.nametofont('TkFixedFont')
+                menu_font = tkfont.nametofont('TkMenuFont')
+                heading_font = tkfont.nametofont('TkHeadingFont')
+
+                default_font.configure(family='Segoe UI', size=10)
+                text_font.configure(family='Segoe UI', size=10)
+                fixed_font.configure(family='Consolas', size=10)
+                menu_font.configure(family='Segoe UI', size=10)
+                heading_font.configure(family='Segoe UI Semibold', size=10)
+            except Exception:
+                pass
+
+            # Global ttk style tweaks
+            style.configure('TButton', padding=(10, 6))
+            style.configure('TLabel', padding=(2, 2))
+            style.configure('TEntry', padding=(4, 4))
+            style.configure('TCombobox', padding=(4, 4))
+            style.configure('TNotebook.Tab', padding=(14, 8))
+
+            # Treeview aesthetics
+            style.configure('Treeview', rowheight=26)
+            style.configure('Treeview.Heading', font=('Segoe UI Semibold', 10))
+
+            # Subtle hover/active states if supported
+            try:
+                style.map('TButton',
+                          relief=[('pressed', 'sunken'), ('!pressed', 'raised')],
+                          background=[('active', '#e7e7ef')])
+            except Exception:
+                pass
+
+        except Exception:
+            # If anything goes wrong, silently keep defaults
+            pass
     
     def setup_main_layout(self):
         """Setup main window layout"""
@@ -110,6 +173,8 @@ class MainWindow:
         
         # Item editor tabs (will be created dynamically)
         self.item_editor_frames: Dict[ItemCategory, ItemEditorFrame] = {}
+        # Map top-level group container widgets to their nested notebooks
+        self._group_container_to_notebook: Dict[tk.Widget, ttk.Notebook] = {}
         
         # Bind tab change event
         self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
@@ -135,13 +200,13 @@ class MainWindow:
         # Search
         ttk.Label(toolbar, text="Search:").pack(side=tk.LEFT, padx=(0, 5))
         self.search_var = tk.StringVar()
-        self.search_entry = ttk.Entry(toolbar, textvariable=self.search_var, width=30)
+        self.search_entry = ttk.Entry(toolbar, textvariable=self.search_var, width=36)
         self.search_entry.pack(side=tk.LEFT, padx=(0, 5))
         self.search_entry.bind('<Return>', self.on_search)
         ttk.Button(toolbar, text="Search", command=self.on_search).pack(side=tk.LEFT)
         
         # Status indicator
-        self.status_indicator = ttk.Label(toolbar, text="●", foreground="red")
+        self.status_indicator = ttk.Label(toolbar, text="●", foreground="#d14")
         self.status_indicator.pack(side=tk.RIGHT, padx=5)
         self.status_label = ttk.Label(toolbar, text="No save loaded")
         self.status_label.pack(side=tk.RIGHT)
@@ -176,12 +241,23 @@ class MainWindow:
     
     def on_data_loaded(self):
         """Called when Excel data is loaded"""
-        if self.game_database:
+        if self.game_database and len(self.game_database.get_all_categories()) > 0:
             self.create_category_tabs()
             self.update_database_stats()
             self.set_status("Excel data loaded successfully")
         else:
-            self.set_status("No Excel data found")
+            # Prompt user to locate the Excel data file when running from a packaged .exe
+            self.set_status("No Excel data found. Please select the Excel file.")
+            file_path = filedialog.askopenfilename(
+                title="Select Excel Data File",
+                filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+            )
+            if file_path:
+                from pathlib import Path as _Path
+                self.excel_service.excel_path = _Path(file_path)
+                self.refresh_excel_data()
+            else:
+                self.set_status("Excel data not selected. Categories will be unavailable.")
     
     def create_category_tabs(self):
         """Create tabs for each item category"""
@@ -197,19 +273,87 @@ class MainWindow:
         
         self.item_editor_frames.clear()
         
-        # Create tabs for categories with items
+        # Create tabs grouped by main categories (e.g., Clothes, Houses)
+        group_to_container: Dict[str, ttk.Frame] = {}
+        group_to_notebook: Dict[str, ttk.Notebook] = {}
+
         for category in self.game_database.get_all_categories():
             collection = self.game_database.get_collection(category)
-            if len(collection) > 0:
+            if len(collection) == 0:
+                continue
+
+            group_name = self._group_for_category(category)
+            if group_name is None:
+                # Standalone tab
                 frame = ItemEditorFrame(
-                    self.notebook, 
-                    category, 
-                    collection, 
+                    self.notebook,
+                    category,
+                    collection,
                     self.image_service,
-                    self.save_service
+                    self.save_service,
                 )
+                if self.save_service.current_save_data:
+                    frame.load_save_data(self.save_service.current_save_data)
                 self.item_editor_frames[category] = frame
-                self.notebook.add(frame, text=f"{category.value.title()} ({len(collection)})")
+                friendly = self._humanize_category(category)
+                self.notebook.add(frame, text=f"{friendly} ({len(collection)})")
+            else:
+                # Ensure group container and nested notebook exist
+                if group_name not in group_to_container:
+                    container = ttk.Frame(self.notebook)
+                    nested = ttk.Notebook(container)
+                    nested.pack(fill=tk.BOTH, expand=True)
+                    group_to_container[group_name] = container
+                    group_to_notebook[group_name] = nested
+                    self._group_container_to_notebook[container] = nested
+
+                    # Compute group count lazily as we add subcategories
+                    self.notebook.add(container, text=group_name)
+
+                nested = group_to_notebook[group_name]
+
+                sub_frame = ItemEditorFrame(
+                    nested,
+                    category,
+                    collection,
+                    self.image_service,
+                    self.save_service,
+                )
+                if self.save_service.current_save_data:
+                    sub_frame.load_save_data(self.save_service.current_save_data)
+                self.item_editor_frames[category] = sub_frame
+                sub_label = self._humanize_category(category)
+                nested.add(sub_frame, text=f"{sub_label} ({len(collection)})")
+
+        # Update group tab labels with aggregate counts
+        for group_name, container in group_to_container.items():
+            total = 0
+            nested = group_to_notebook[group_name]
+            for i in range(len(nested.tabs())):
+                text = nested.tab(i, 'text')
+                # Extract count inside parentheses if present
+                try:
+                    count = int(text.split('(')[-1].split(')')[0])
+                except Exception:
+                    count = 0
+                total += count
+            # Update the top-level tab text with total count
+            self.notebook.tab(container, text=f"{group_name} ({total})")
+
+    def _humanize_category(self, category: ItemCategory) -> str:
+        """Make a user-friendly name from enum value (remove underscores, title case, fix abbreviations)."""
+        name = category.value.replace('_', ' ').title()
+        # Fix common abbreviations
+        name = name.replace('Npc', 'NPC')
+        return name
+
+    def _group_for_category(self, category: ItemCategory) -> str | None:
+        """Return a main group name for a category, or None if standalone."""
+        if category.name.startswith('CLOTHES_'):
+            return 'Clothes'
+        if category.name.startswith('HOUSE_') or category == ItemCategory.NPC_HOUSES:
+            return 'Houses'
+        return None
     
     def load_save_file(self):
         """Load a save file - first try auto-detection, then manual selection"""
@@ -257,6 +401,16 @@ class MainWindow:
         else:
             logger.info("No save files found for auto-detection")
             self.set_status("No save files found - please select manually")
+            # If categories are not loaded yet, prompt for Excel file to ensure UI has data
+            if not self.game_database or len(self.game_database.get_all_categories()) == 0:
+                file_path = filedialog.askopenfilename(
+                    title="Select Excel Data File",
+                    filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+                )
+                if file_path:
+                    from pathlib import Path as _Path
+                    self.excel_service.excel_path = _Path(file_path)
+                    self.refresh_excel_data()
             return False
     
     def _load_specific_file(self, file_path: str):
@@ -469,34 +623,37 @@ class MainWindow:
     
     def add_all_items(self):
         """Add all items from current category to save"""
-        current_tab = self.notebook.index(self.notebook.select())
-        if current_tab == 0:  # Currency tab
-            return
-        
-        # Get current item editor
-        tab_text = self.notebook.tab(current_tab, 'text')
-        category_name = tab_text.split(' ')[0].lower()
-        
-        for category, frame in self.item_editor_frames.items():
-            if category.value == category_name:
-                frame.add_all_items()
-                break
+        frame = self._get_active_item_editor_frame()
+        if frame:
+            frame.add_all_items()
     
     def clear_all_items(self):
         """Clear all items from current category"""
         if messagebox.askyesno("Confirm", "Clear all items from current category?"):
-            current_tab = self.notebook.index(self.notebook.select())
-            if current_tab == 0:  # Currency tab
-                return
-            
-            # Get current item editor
-            tab_text = self.notebook.tab(current_tab, 'text')
-            category_name = tab_text.split(' ')[0].lower()
-            
-            for category, frame in self.item_editor_frames.items():
-                if category.value == category_name:
-                    frame.clear_all_items()
-                    break
+            frame = self._get_active_item_editor_frame()
+            if frame:
+                frame.clear_all_items()
+
+    def _get_active_item_editor_frame(self) -> ItemEditorFrame | None:
+        """Resolve the currently visible ItemEditorFrame, accounting for grouped tabs."""
+        try:
+            # If on the first tab (Currencies), return None
+            if self.notebook.index(self.notebook.select()) == 0:
+                return None
+
+            current_widget = self.notebook.nametowidget(self.notebook.select())
+            if isinstance(current_widget, ItemEditorFrame):
+                return current_widget
+
+            # If this is a container for a grouped tab, fetch its nested notebook
+            nested = self._group_container_to_notebook.get(current_widget)
+            if nested is not None:
+                sub_widget = nested.nametowidget(nested.select())
+                if isinstance(sub_widget, ItemEditorFrame):
+                    return sub_widget
+            return None
+        except Exception:
+            return None
     
     def on_tab_changed(self, event):
         """Handle tab change"""
@@ -564,6 +721,126 @@ class MainWindow:
             "• Automatic backups\n"
             "• Modern Python GUI"
         )
+
+    def augment_save_with_legacy_dicts(self):
+        """Add missing clothes, houses, and NPC skins to the loaded save using legacy C# dicts.
+        This mirrors the behavior in EditPets.cs but applies safely to the current Python model.
+        """
+        if not self.save_service.current_save_data:
+            messagebox.showwarning("Warning", "No save file loaded")
+            return
+
+        # Locate legacy C# dictionary files
+        try:
+            repo_root = Path(__file__).resolve().parents[2]
+            dicts_dir = repo_root / "Ddv-Save-Editor" / "fast edit ddv" / "Class" / "Dict"
+            clothes_cs = dicts_dir / "Clothes.cs"
+            houses_cs = dicts_dir / "Houses.cs"
+            skins_cs = dicts_dir / "SkinsNpc.cs"
+        except Exception as e:
+            logger.error(f"Failed to resolve legacy dict paths: {e}")
+            messagebox.showerror("Error", f"Failed to resolve legacy dict paths: {e}")
+            return
+
+        if not (clothes_cs.exists() and houses_cs.exists() and skins_cs.exists()):
+            messagebox.showerror(
+                "Error",
+                "Legacy C# dictionaries not found. Ensure 'Ddv-Save-Editor/fast edit ddv/Class/Dict/*.cs' exist."
+            )
+            return
+
+        self.set_status("Augmenting save with legacy dictionaries...")
+        self.show_progress()
+
+        def do_augment():
+            try:
+                # Work on a direct dict copy of the original save
+                save_dict = self.save_service.current_save_data.custom_data.get('original_save')
+                if not isinstance(save_dict, dict):
+                    raise RuntimeError("Original save dictionary is not available")
+
+                # Snapshot of existing keys for the targeted inventories
+                def inv_keys(d: Dict[str, Any], inv_id: str) -> set:
+                    try:
+                        return set((d.get('Player', {})
+                                      .get('ListInventories', {})
+                                      .get(inv_id, {})
+                                      .get('Inventory', {}) or {}).keys())
+                    except Exception:
+                        return set()
+
+                before_1 = inv_keys(save_dict, '1')
+                before_5 = inv_keys(save_dict, '5')
+                before_7 = inv_keys(save_dict, '7')
+
+                summary = augment_save_dict(
+                    save_dict,
+                    add_clothes=True,
+                    add_houses=True,
+                    add_skins=True,
+                    inventory_for_clothes='1',
+                    inventory_for_houses='5',
+                    inventory_for_skins='7',
+                    amount=1,
+                    mode='missing-only',
+                    clothes_cs_path=clothes_cs,
+                    houses_cs_path=houses_cs,
+                    skins_cs_path=skins_cs,
+                )
+
+                after_1 = inv_keys(save_dict, '1')
+                after_5 = inv_keys(save_dict, '5')
+                after_7 = inv_keys(save_dict, '7')
+
+                added_1 = after_1 - before_1
+                added_5 = after_5 - before_5
+                added_7 = after_7 - before_7
+
+                # Reflect additions into the in-memory SaveData model so save() will persist them
+                from ..models.game_item import PlayerInventoryItem
+
+                def add_items_to_model(inv_id: str, keys: set):
+                    for k in keys:
+                        try:
+                            item_id = int(k)
+                        except ValueError:
+                            continue
+                        # Avoid duplicates in model list
+                        exists = any(
+                            (itm.item_id == item_id and (itm.inventory_id or '1') == inv_id)
+                            for itm in self.save_service.current_save_data.inventory_items
+                        )
+                        if not exists:
+                            self.save_service.current_save_data.inventory_items.append(
+                                PlayerInventoryItem(item_id=item_id, amount=1, state=None, inventory_id=inv_id)
+                            )
+
+                add_items_to_model('1', added_1)
+                add_items_to_model('5', added_5)
+                add_items_to_model('7', added_7)
+
+                # Update original save dict reference
+                self.save_service.current_save_data.custom_data['original_save'] = save_dict
+
+                msg = (
+                    f"Clothes added: {summary['clothes_added']}, Houses added: {summary['houses_added']}, "
+                    f"NPC skins added: {summary['skins_added']}"
+                )
+                logger.info(f"Augmentation complete: {msg}")
+                self.root.after(0, lambda: [
+                    self.set_status("Augmentation complete"),
+                    self.hide_progress(),
+                    messagebox.showinfo("Augment Save", msg)
+                ])
+            except Exception as e:
+                logger.error(f"Augmentation failed: {e}")
+                self.root.after(0, lambda: [
+                    self.set_status("Augmentation failed"),
+                    self.hide_progress(),
+                    messagebox.showerror("Error", f"Augmentation failed: {e}")
+                ])
+
+        threading.Thread(target=do_augment, daemon=True).start()
     
     def set_status(self, text: str):
         """Set status bar text"""

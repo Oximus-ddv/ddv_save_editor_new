@@ -78,10 +78,13 @@ class ExcelDataService:
         name_lower = sheet_name.lower().strip()
         
         # Category mappings
+        # Note: We do not have umbrella enums like CLOTHES/HOUSES; map to specific subcategories or best-effort fallbacks
         category_mappings = {
-            ItemCategory.PETS: ['pets', 'pet', 'companions', 'critters', 'animals'],
-            ItemCategory.CLOTHES: ['clothes', 'clothing', 'apparel', 'outfits', 'fashion'],
-            ItemCategory.HOUSES: ['houses', 'house', 'buildings', 'homes', 'structures'],
+            ItemCategory.PETS: ['pets', 'pet', 'companions', 'critter', 'critters', 'animals'],
+            # Clothes: map generic terms to CLOTHES_OTHER to ensure they appear; more specific handled elsewhere
+            ItemCategory.CLOTHES_OTHER: ['clothes', 'clothing', 'apparel', 'outfits', 'fashion'],
+            # Houses: generic sheet names mapped to house skins by default
+            ItemCategory.HOUSE_SKINS: ['houses', 'house', 'buildings', 'homes', 'structures'],
             ItemCategory.NPC_SKINS: ['skins', 'npc', 'characters', 'character_skins', 'npcskins'],
             ItemCategory.FURNITURE: ['furniture', 'decor', 'decoration', 'furnishing'],
             ItemCategory.TOOLS: ['tools', 'equipment', 'implements'],

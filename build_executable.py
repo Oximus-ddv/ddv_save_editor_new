@@ -31,9 +31,9 @@ def main():
         shutil.rmtree(build_dir)
         print("🧹 Cleaned previous build directory")
     
-    # PyInstaller command
+    # PyInstaller command (invoke via module to avoid PATH issues)
     cmd = [
-        "pyinstaller",
+        sys.executable, "-m", "PyInstaller",
         "--onefile",                    # Create single file
         "--windowed",                   # Don't show console window
         "--name", "DDV_Save_Editor",    # Output name

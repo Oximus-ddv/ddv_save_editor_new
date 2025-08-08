@@ -410,20 +410,23 @@ class SaveFileService:
                     inventory_items.append(PlayerInventoryItem(
                         item_id=item_id,
                         amount=amount,
-                        state=state
+                        state=state,
+                        inventory_id=str(inv_id)
                     ))
                 except (ValueError, TypeError):
                     continue
         
-        # Parse pets
+        # Parse pets (support newer fields: CustomName, XP)
         pets = []
         pets_data = player_data.get('Pets', [])
         for pet_data in pets_data:
             if isinstance(pet_data, dict) and 'PetItemID' in pet_data:
                 pets.append(PetData(
                     pet_item_id=pet_data['PetItemID'],
-                    name=pet_data.get('Name'),
+                    name=pet_data.get('Name'),  # legacy name field
+                    custom_name=pet_data.get('CustomName'),
                     friendship_level=pet_data.get('FriendshipLevel'),
+                    xp=pet_data.get('XP', pet_data.get('FriendshipXP')),
                     is_following=pet_data.get('IsFollowing', False)
                 ))
         
@@ -467,28 +470,51 @@ class SaveFileService:
         pets_list = []
         for pet in save_data.pets:
             pet_dict = {'PetItemID': pet.pet_item_id}
+            # Preserve legacy Name if present; prefer CustomName when available
+            if pet.custom_name:
+                pet_dict['CustomName'] = pet.custom_name
             if pet.name:
                 pet_dict['Name'] = pet.name
             if pet.friendship_level is not None:
                 pet_dict['FriendshipLevel'] = pet.friendship_level
+            if pet.xp is not None:
+                pet_dict['XP'] = pet.xp
             if pet.is_following:
                 pet_dict['IsFollowing'] = pet.is_following
             pets_list.append(pet_dict)
-        
+
         player_data['Pets'] = pets_list
         
-        # Update inventories
-        inventories = player_data.setdefault('ListInventories', {})
-        
-        # Group inventory items by inventory type (this is a simplification)
-        # In reality, different inventory IDs store different types of items
-        general_inventory = inventories.setdefault('1', {}).setdefault('Inventory', {})
-        
+        # Rebuild inventories from scratch to avoid stale entries
+        # Preserve any non-Inventory metadata that might exist on each bucket
+        original_inventories: Dict[str, Any] = player_data.get('ListInventories', {}) or {}
+        player_data['ListInventories'] = {}
+        inventories: Dict[str, Any] = player_data['ListInventories']
+
+        # Group inventory items by their original inventory_id when available
+        # Fallback to '1' if not specified
         for inv_item in save_data.inventory_items:
+            group_id = inv_item.inventory_id or '1'
+            inv_bucket = inventories.setdefault(group_id, {})
+            # Copy over non-Inventory fields from the original bucket once
+            if '__metadata_copied__' not in inv_bucket:
+                original_bucket = original_inventories.get(group_id, {}) or {}
+                for key, value in original_bucket.items():
+                    if key != 'Inventory' and key not in inv_bucket:
+                        inv_bucket[key] = value
+                # Mark to avoid re-copy attempts
+                inv_bucket['__metadata_copied__'] = True
+
+            group = inv_bucket.setdefault('Inventory', {})
             item_dict = {'Amount': inv_item.amount}
             if inv_item.state:
                 item_dict['State'] = inv_item.state
-            general_inventory[str(inv_item.item_id)] = item_dict
+            group[str(inv_item.item_id)] = item_dict
+
+        # Clean internal flags
+        for bucket in inventories.values():
+            if isinstance(bucket, dict) and '__metadata_copied__' in bucket:
+                bucket.pop('__metadata_copied__', None)
         
         # Update game info
         game_info = save_dict.setdefault('GameInfo', {})

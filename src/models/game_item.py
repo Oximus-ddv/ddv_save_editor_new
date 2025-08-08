@@ -70,6 +70,7 @@ class PlayerInventoryItem(BaseModel):
     item_id: int = Field(..., description="Reference to GameItem.id")
     amount: int = Field(1, description="Quantity of the item")
     state: Optional[str] = Field(None, description="Item state (for some special items)")
+    inventory_id: Optional[str] = Field(None, description="Original inventory/group identifier where this item belongs")
 
     @validator('amount')
     def validate_amount(cls, v):
@@ -81,8 +82,10 @@ class PlayerInventoryItem(BaseModel):
 class PetData(BaseModel):
     """Specific data for pet items"""
     pet_item_id: int = Field(..., description="Pet item ID")
-    name: Optional[str] = Field(None, description="Custom pet name")
+    name: Optional[str] = Field(None, description="Deprecated: Original Name field, kept for backward compatibility")
+    custom_name: Optional[str] = Field(None, description="Custom pet name")
     friendship_level: Optional[int] = Field(None, description="Friendship level")
+    xp: Optional[int] = Field(None, description="Friendship XP")
     is_following: bool = Field(False, description="Is pet currently following player")
 
 

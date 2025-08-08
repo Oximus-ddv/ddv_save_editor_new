@@ -35,8 +35,12 @@ class SettingsDialog:
         self.auto_backup_var = tk.BooleanVar(value=True)
         self.show_images_var = tk.BooleanVar(value=True)
         self.cache_size_var = tk.IntVar(value=200)
-        # Default DDV hex key (from CyberChef configuration)
-        self.hex_key_var = tk.StringVar(value="62 35 71 68 68 38 73 61 4A 38 55 6C 44 4A 55 7A 54 5A 58 64 32 54 67 36 6D 62 6F 38 57 38 6E 35")
+        # Default DDV hex key (from CyberChef configuration). Expose via environment override if packaged.
+        import os
+        self.hex_key_var = tk.StringVar(value=os.environ.get(
+            "DDV_HEX_KEY",
+            "62 35 71 68 68 38 73 61 4A 38 55 6C 44 4A 55 7A 54 5A 58 64 32 54 67 36 6D 62 6F 38 57 38 6E 35"
+        ))
         
         self.setup_ui()
         
