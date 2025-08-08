@@ -1,3 +1,5 @@
+This is a rework of : https://github.com/BenCG3/Ddv-Save-Editor/ big shootout to BenCG3 for his work !
+
 # DDV Save Editor - Python Version
 
 A modern, comprehensive save file editor for Disney Dreamlight Valley, rebuilt in Python with advanced features and enhanced functionality.
