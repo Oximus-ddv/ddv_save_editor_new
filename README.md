@@ -170,12 +170,6 @@ release/
 ### Decryption key
 
 - The standard DDV hex key is built in.
-- You can override it (useful for custom encrypted saves) by setting an environment variable before launching the `.exe`:
-
-```
-set DDV_HEX_KEY=62 35 71 68 68 38 73 61 ... 6E 35
-DDV_Save_Editor.exe
-```
 
 ### Troubleshooting
 
