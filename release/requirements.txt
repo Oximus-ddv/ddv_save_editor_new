@@ -9,3 +9,5 @@ typing-extensions
 PyInstaller
 black
 pytest
+requests
+beautifulsoup4

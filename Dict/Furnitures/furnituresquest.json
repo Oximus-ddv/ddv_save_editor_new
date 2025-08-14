@@ -1,0 +1,245 @@
+{
+//Quest Furniture
+//Quest Companion Items
+  "40002398": "Tropical Companion Home (QSH)",
+  "40003256": "Bayou Companion Home (QSH)",
+  "40001326": "Sunbird Feeder (Quest-2)",
+  
+//Quest Stations
+  "40800026": "Uncrafting Station (QSH)",
+  "40003803": "Agrabah Crafting Station (QSH)",
+  "40003428": "Jungle Crafting Station (QSH)",
+
+//Quest Pathing and Fencing
+  "40002819": "Blend Left-Curving Trolley Tracks (Crafted)(QSH)",
+  "40002820": "Blend Right-Curving Trolley Tracks (Crafted)(QSH)",
+  "40002824": "Curved Trolley Tracks (Crafted)(QSH)",
+  "40002818": "Straight Trolley Tracks (Crafted)(QSH)",
+  "40002822": "Oswaldian Blend Left-Curving Trolley Tracks (Crafted)(QSH)",
+  "40002823": "Oswaldian Blend Right-Curving Trolley Tracks (Crafted)(QSH)",
+  "40002825": "Oswaldian Curved Trolley Tracks (Crafted)(QSH)",
+  "40002821": "Oswaldian Straight Trolley Tracks (Crafted)(QSH)",
+  "40700104": "Savanna Wooden Fence (QSH)",
+  
+//Aladdin Quest Furniture
+  "40003736": "Golden Tea Set (SHq)",
+  "40003999": "Sandcastle Tower Corner (Crafted)(QSH)",
+  "40003998": "Sandcastle Door (Crafted)(QSH)",
+  "40003997": "Sandcastle Wall (Crafted)(QSH)",
+  "40003801": "Sandcastle Tower (Crafted)(QSH)",
+  "40003800": "Sandcastle Tower Wall (Crafted)(QSH)",
+  "40003803": "Agrabah Crafting Station (QSH)",
+  "40003305": "Prism & Pedestal (QSH)",
+  "40003674": "Large Marketplace Chest (QSH)",
+  "40003673": "Small Marketplace Chest (QSH)",
+  "40003233": "Iago Statue (Quest-1)",
+  "40003676": "Clay Marketplace Jars (Quest-6)",
+  "40003675": "Marketplace Vessels (Quest-6)",
+  "40003677": "Marketplace Fruit Baskets (Quest-6)",
+  "40003707": "Jasmines Centerpiece (Quest-1)",
+  "40003896": "The Enchanted Flower (Quest-1)",
+  "40002703": "Attorney Stand (Quest-2)",
+  "40002700": "Imagination Generator(Quest-4)",
+  "40003710": "Sandcastle Corner Tower (Quest-4)",
+  "40003709": "Sandcastle Door (Quest-1)",
+  "40003708": "Sandcastle Wall (Quest-3)",
+  
+//Alice in Wonderland Quest Furniture
+  "40003780": "Literary Pop-Up Book (Quest-1)",
+  "40003977": "Unbirthday Cake (Quest-1)",
+  "40003781": "Wonderland Candle (QSH)",
+  "40500097": "Nonsense Banquet Table (Quest-1)",
+  
+//Ancient Civilization Quest
+  "40001936": "The Chronicles of the Ancients (Quest-1)",
+  "40002007": "Ancients Landing Pedestal (Picked Up-1)",
+  "40002168": "Hologram Station (Picked Up-5)",
+  
+//Beauty and the Beast Quest Furniture
+  "40002377": "Gastons Portrait (QSH)",
+  "40001671": "Date-Night Exterior Table (QSH)",
+  "40002408": "LeFou Coconut Bust (QSH)",
+  "40002401": "Golden Eel Trophy (QSH)",
+  "40002404": "Golden Piranha Trophy (QSH)",
+  "40002405": "Golden Prisma Shrimp Trophy (QSH)",
+  "40002413": "Gastons Coconut Gym (Quest-1)",
+  "40002298": "Gastons Shipwreck (Picked Up-1)",
+  
+//Brave Quest Furniture
+  "40003313": "Clan DunBroch Banner (QSH)",
+  "40003639": "Clan DunBroch Family Treasure (QSH)",
+  "40003606": "Clan McDuck Banner (QSH)",
+  
+//Cinderella Quest Furniture
+  "40001534": "Pumpkin Carriage (QSH)",
+  "40001615": "Fairytale Gazebo (Quest-1)",
+  "40001616": "Fairytale Table (Quest-1)",
+  
+//Encanto Quest Furniture
+  "40001687": "Yellow Floral Chair (QSH)",
+  "40001690": "Madrigal Table (QSH)",
+  
+//Frozen Quest Furniture
+  "40001166": "Kristoffs Sled (QSH)",
+  "40001200": "Anna Statue (Quest-1)",
+  
+//Hercules Quest Furniture
+  "40003317": "Marble Hades Statue (Quest-1)",
+  "40003656": "Hades Kiosk (Quest-1)",
+  "40003331": "Corinthian Marble DJ Table (Quest-1)",
+  "40003682": "Lightning Generator (Quest-1)",
+  
+//Lilo & Stitch Quest Furniture
+  "40001269": "Stitchs Little Red Ship (QSH)",
+  "40001539": "Donald Sign (Quest-2)",
+  "40001540": "Stitchs Donald Sign (Quest-1)",
+  
+//Mickey & Friends Quest Furniture
+  "40002815": "Daisys Advice Box (QSH)",
+  "40003099": "Mickeys Steamboat (QSH)",
+  "40001272": "Dreamlight Fountain (Quest-1)",
+
+//Moana Quest Furniture
+  "40001053": "Honored Place (Quest-1)",
+  
+//Monsters Inc. Quest Furniture
+  "40002626": "Mikes Snotty Tissues - what a... generous gift (QSH)",
+  "40002573": "Villager of the Month Award (QSH)",
+  "40002627": "Comedic Meet and Greet Decor (QSH)",
+  "40002572": "Big Scream TV (QSH)",
+  "40002568": "Clay Statue of Sulley (QSH)",
+  "40002569": "Lemon Clock (QSH)",
+  "40002319": "Vanellope and Mikes Billboard (Quest-1)",
+  "40002614": "Monsters, Inc. Computer (Quest-1)",
+  "40002620": "Dreamlight Magic Arcade (QSH)",
+  "40002380": "Vanellopes Promotional Poster (Peaceful Meadow (Quest-1))",
+  "40002447": "Vanellopes Promotional Poster (Dazzle  (Quest-1))",
+  "40002451": "Vanellopes Promotional Poster (Forest of Valor (Quest-1))",
+  "40002318": "Vanellope's Promotional Poster (Plaza (Quest-1))",
+  
+//Mulan Quest Furniture
+  "40002927": "Dragon Statue (QSH)",
+  "40002909": "Mulans Memory Shelf (QSH)",
+  "40002916": "Golden Dragon Trophy (QSH)",
+  "40002735": "Tiny Chair (QSH)",
+  "40002908": "The Beasts Test (QSH)",
+  "40500059": "Tactical Table (Quest-1)",
+  "40002918": "Modular Dragon Head (QSH)",
+  "40002919": "Modular Dragon Body (QSH)",
+  "40002920": "Modular Dragon Tail (QSH)",
+  "40002721": "Modular Dragon Head (Quest-2)",
+  "40002722": "Modular Dragon Body (Quest-3)",
+  "40002723": "Modular Dragon Tail (Quest-2)",
+  "40002911": "Wooden Training Dummy (Quest-1)",
+  "40002718": "Beastly Mannequin (Quest-1)",
+  "40002883": "Elegant Mahogany Table (Quest-1)",
+  "40002717": "Great Stone Dragon Statue (Quest-1)",
+  "40003062": "Shadow Theater (Quest-1)",
+  "40002859": "Weapons Rack (Quest-1)",
+
+//Oswald the Lucky Rabbit Quest Furniture
+  "40002819": "Blend Left-Curving Trolley Tracks (Crafted)",
+  "40002820": "Blend Right-Curving Trolley Tracks (Crafted)",
+  "40002824": "Curved Trolley Tracks (Crafted)",
+  "40002818": "Straight Trolley Tracks (Crafted)",
+  "40002822": "Oswaldian Blend Left-Curving Trolley Tracks (Crafted)",
+  "40002823": "Oswaldian Blend Right-Curving Trolley Tracks (Crafted)",
+  "40002825": "Oswaldian Curved Trolley Tracks (Crafted)",
+  "40002821": "Oswaldian Straight Trolley Tracks (Crafted)",
+  "40002814": "Oswaldian Trolley (QSH)",
+  "40002562": "Missing Trolley Posters (Quest-5)",
+  "40002561": "Landing Strip (Quest-1)",
+  "40002558": "Oswaldian Straight Trolley Tracks (Quest-1 to 10)",
+  "40002559": "Oswaldian Right-Curving Trolley Tracks (Quest-1 to 10)",
+  "40002560": "Oswaldian Left-Curving Trolley Tracks (Quest-1 to 10)",
+  
+//Tangled Quest Furniture
+  "40001191": "Mother Gothels Standing Mirror (QSH)",
+  "40003301": "Flying Paper Lantern (QSH)",
+  "40002393": "Rapunzels Art Class Banner (Quest-1)",
+  "40002414": "Cozy Fire Pit (Quest-1)",
+  
+//The Lion King Quest Furniture
+  "40001294": "Simbas Circle of Life Window (QSH)",
+  "40003428": "Jungle Crafting Station (QSH)",
+  "40001249": "Nalas Waterfall (QSH)",
+  "40001505": "Volcanic Stove (QSH)",
+  "40001538": "Amethyst Lioness Statue (Quest-1)",
+  "40001535": "Aquamarine Lioness Statue (Quest-1)",
+  "40001537": "Citrine Lioness Statue (Quest-1)",
+  "40001754": "Relaxing Oasis",
+  "40003385": "Leafy Beanbag (Quest-1)",
+  "40002928": "Luxury Mud Bath (Quest-1)",
+  "40002937": "Display Pillar (Quest-4)",
+  "40002936": "Pottery Wheel (Quest-4)",
+  "40002941": "Nalas Pottery (Quest-1)",
+  "40002940": "Simbas Pottery (Quest-1)",
+  "40002938": "Pumbaas Pottery (Quest-1)",
+  "40002939": "Timons Pottery (Quest-1)",
+  "40003028": "Timon Billboard (Quest-4)",
+  "40003070": "Small Palm Tree (Quest-6)",
+  "40003025": "Short Jungle Plant (Quest-6)",
+  "40003024": "Wide Jungle Plant (Quest-6)",
+  "40002955": "Meteorite in Glass (Quest-6)",
+  "40001512": "Sound System (Quest-1)",
+  
+//The Little Mermaid Quest Furniture
+  "40001259": "Prince Eric Statue (Quest-1)",
+  "40001262": "Ariels Crafting Station (Crafted QSH)",
+  "40001387": "Erics Miniature Boat (QSH)",
+  
+//The Princess and the Frog Quest Furniture
+  "40003256": "Bayou Companion Home (QSH)",
+  "40003265": "Blank Sandwich Board (QSH)",
+  "40800025": "Slow Cooker (QSH)",
+  "40002995": "Annas Victory Sandwich Board (Quest-0 to 1)",
+  "40002997": "Kristoffs Victory Sandwich Board (Quest-0 to 1)",
+  "40002996": "Mikes Victory Sandwich Board (Quest-0 to 1)",
+  "40003107": "Parade Festival Arch (Crafted QSH)",
+  
+//Tim Burton's The Nightmare Before Christmas Quest Furniture
+  "40002412": "Dreamlight Day Banner (QSH)",
+  "40003692": "Dreamlight Memory Quilt (QSH)",
+  "40002422": "Oogie Boogie Sign (Quest-8)",
+  "40002421": "Pumpkin Kings Throne (Quest-1)",
+  "40002048": "Holiday Tree-Portal (Quest-1)",
+  "40003714": "Compost Bin (Quest-1)",
+  
+//Toy Story Quest Furniture
+  "40001804": "Alien Toy (QSH)",
+  "40001365": "Space Ranger Ship (Quest-1)",
+  
+//Wreck It Ralph Quest Furniture
+  "40001725": "Vanellopes Sugar Rush Racer (QSH)",
+  "40001907": "Cardboard Cyclops Monster Panel (QSH)",
+  "40001769": "Cardboard Door Panel (QSH)",
+  "40001765": "Cardboard Dragon Panel (QSH)",
+  "40001770": "Cardboard Fire Monster Panel (QSH)",
+  "40001767": "Cardboard Ogre Panel (QSH)",
+  "40001806": "Cardboard Scary Monster Panel (QSH)",
+  "40001905": "Crooked Purple Candy Tree (Quest-5)",
+  "40001903": "Straight Purple Candy Tree (Quest-5)",
+  "40001904": "Crooked Red Candy Tree (Quest-5)",
+  "40001763": "Straight Red Candy Tree (Quest-5)",
+  "40001902": "Giant Flower Lollipop (Quest-5)",
+  "40001764": "Giant Spiral Lollipop (Quest-5)",
+  
+//Non Disney Related Quest Furniture
+  "40001474": "Stage (QSH)",
+  "40000333": "Granite Fire Bowl (QSH)",
+  "40003714": "Compost Bin (Quest-1)",
+  "40001152": "Scrooge McDucks Store Sign (Quest-4)",
+  "40002703": "Attorney Stand (Quest-2)",
+  "40001232": "Micberry Tree (Quest-1)",
+  "40001675": "Mirror of True Seeing (Quest-1)",
+  "40001766": "Scar Lure (Quest-1)",
+  "40002018": "Carnivorous Floral Arrangement (Quest-2)",
+  "40001174": "Signpost — Dazzle Beach (Quest-1)",
+  "40001175": "Signpost — The Plaza (Quest-1)",
+  "40001176": "Signpost — Peaceful Meadow (Quest-1)",
+  "40001178": "Signpost — Forest of Valor (Quest-1)",
+  "40001179": "Signpost — Sunlit Plateau (Quest-1)",
+  "40001180": "Signpost — Glade of Trust (Quest-1)",
+  "40001182": "Signpost — Frosted Heights (Quest-1)",
+  "40001183": "Signpost — Forgotten Lands (Quest-1)",
+}

@@ -12,11 +12,14 @@ import threading
 from ..services.excel_service import ExcelDataService
 from ..services.image_service import ImageService
 from ..services.save_service import SaveFileService
+from ..services.settings_service import SettingsService
+from ..services.dict_service import DictDataService
 from ..services.augmentation_service import augment_save_dict
 from ..models.game_item import GameDatabase, ItemCategory
 from .item_editor import ItemEditorFrame
 from .currency_editor import CurrencyEditorFrame
 from .settings_dialog import SettingsDialog
+from .search_results import SearchResultsFrame
 
 
 logger = logging.getLogger(__name__)
@@ -29,14 +32,47 @@ class MainWindow:
         self.root = tk.Tk()
         self.root.title("DDV Save Editor - Python")
         self.root.geometry("1200x800")
+        # Maximize by default to ensure full visibility on all screen sizes
+        try:
+            self.root.state('zoomed')  # Windows
+        except Exception:
+            try:
+                self.root.attributes('-zoomed', True)  # Some *nix
+            except Exception:
+                # Fallback: use full screen size minus small margins
+                try:
+                    w = self.root.winfo_screenwidth()
+                    h = self.root.winfo_screenheight()
+                    self.root.geometry(f"{max(800, w-40)}x{max(600, h-80)}+10+10")
+                except Exception:
+                    pass
         
         # Visual theme and scaling first
         self.setup_theme()
 
-        # Services
-        self.excel_service = ExcelDataService()
-        self.image_service = ImageService()
-        self.save_service = SaveFileService()
+        # Settings
+        self.settings_service = SettingsService()
+        self.settings: Dict[str, Any] = self.settings_service.load()
+
+        # Services configured from settings
+        self.excel_service = ExcelDataService(self.settings.get('excel_path'))
+        self.dict_service = DictDataService(self.settings.get('dict_root', 'Dict'))
+        self.image_service = ImageService(
+            zip_path=self.settings.get('image_zip_path', 'img.zip'),
+            folder_path=self.settings.get('image_folder_path', 'img'),
+            cache_size_limit=int(self.settings.get('cache_size', 200) or 200),
+        )
+        # Apply image sizes from settings
+        from ..services.settings_service import SettingsService as _SS
+        self.image_service.thumbnail_size = _SS.parse_size(self.settings.get('thumbnail_size', '64x64'), (64, 64))
+        self.image_service.preview_size = _SS.parse_size(self.settings.get('preview_size', '128x128'), (128, 128))
+
+        self.save_service = SaveFileService(
+            max_backups=int(self.settings.get('max_backups', 10) or 10)
+        )
+
+        # Default hex key for decryption
+        self.default_hex_key = str(self.settings.get('hex_key') or "62 35 71 68 68 38 73 61 4A 38 55 6C 44 4A 55 7A 54 5A 58 64 32 54 67 36 6D 62 6F 38 57 38 6E 35")
         
         # Data
         self.game_database: Optional[GameDatabase] = None
@@ -88,6 +124,8 @@ class MainWindow:
         tools_menu.add_command(label="Clear Image Cache", command=self.clear_image_cache)
         tools_menu.add_separator()
         tools_menu.add_command(label="Augment Save (legacy dicts)", command=self.augment_save_with_legacy_dicts)
+        tools_menu.add_separator()
+        tools_menu.add_command(label="Cache Online Images (Current Category)", command=self.cache_current_category_images)
         
         # Help menu
         help_menu = tk.Menu(self.menubar, tearoff=0)
@@ -131,15 +169,34 @@ class MainWindow:
             except Exception:
                 pass
 
-            # Global ttk style tweaks
-            style.configure('TButton', padding=(10, 6))
-            style.configure('TLabel', padding=(2, 2))
-            style.configure('TEntry', padding=(4, 4))
-            style.configure('TCombobox', padding=(4, 4))
+            # Global ttk style tweaks (support light/dark)
+            theme_choice = str(getattr(self, 'settings', {}).get('theme', 'light')).lower()
+            if theme_choice == 'dark':
+                brand_bg = '#0f172a'      # slate-900
+                brand_panel = '#111827'   # gray-900
+                brand_text = '#e5e7eb'    # gray-200
+                selected_tab_bg = '#1f2937'
+                tree_bg = '#0b1220'
+            else:
+                brand_bg = '#f5f7fb'
+                brand_panel = '#ffffff'
+                brand_text = '#1f2937'
+                selected_tab_bg = '#eef2ff'
+                tree_bg = '#ffffff'
+
+            style.configure('TFrame', background=brand_bg)
+            style.configure('TLabelframe', background=brand_panel)
+            style.configure('TLabelframe.Label', background=brand_panel, foreground=brand_text)
+            style.configure('TLabel', background=brand_bg, foreground=brand_text, padding=(2,2))
+            style.configure('TEntry', padding=(4,4))
+            style.configure('TCombobox', padding=(4,4))
+            style.configure('TNotebook', background=brand_bg)
             style.configure('TNotebook.Tab', padding=(14, 8))
+            style.map('TNotebook.Tab', background=[('selected', selected_tab_bg)])
+            style.configure('TButton', padding=(10,6))
 
             # Treeview aesthetics
-            style.configure('Treeview', rowheight=26)
+            style.configure('Treeview', rowheight=26, fieldbackground=tree_bg, background=tree_bg)
             style.configure('Treeview.Heading', font=('Segoe UI Semibold', 10))
 
             # Subtle hover/active states if supported
@@ -152,6 +209,16 @@ class MainWindow:
 
         except Exception:
             # If anything goes wrong, silently keep defaults
+            pass
+
+    def on_theme_changed(self):
+        choice = self.theme_var.get().strip().lower()
+        self.settings['theme'] = choice
+        self.settings_service.save(self.settings)
+        self.setup_theme()
+        try:
+            self.root.update_idletasks()
+        except Exception:
             pass
     
     def setup_main_layout(self):
@@ -191,6 +258,30 @@ class MainWindow:
         
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
         
+        # Data source quick switch
+        ttk.Label(toolbar, text="Data Source:").pack(side=tk.LEFT, padx=(0, 5))
+        self.data_source_var = tk.StringVar(value=str(self.settings.get('data_source', 'excel')).title())
+        self.data_source_combo = ttk.Combobox(
+            toolbar,
+            textvariable=self.data_source_var,
+            values=["Excel", "Dict"],
+            state="readonly",
+            width=8,
+        )
+        self.data_source_combo.pack(side=tk.LEFT, padx=(0, 5))
+        self.data_source_combo.bind('<<ComboboxSelected>>', lambda e: self.on_data_source_changed())
+        ttk.Button(toolbar, text="Choose Dict Folder", command=self.choose_dict_folder).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(toolbar, text="Reload Data", command=self.refresh_excel_data).pack(side=tk.LEFT)
+
+        ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
+
+        # Theme switcher
+        ttk.Label(toolbar, text="Theme:").pack(side=tk.LEFT, padx=(8, 4))
+        self.theme_var = tk.StringVar(value=str(self.settings.get('theme', 'light')).title())
+        self.theme_combo = ttk.Combobox(toolbar, textvariable=self.theme_var, values=["Light", "Dark"], state="readonly", width=7)
+        self.theme_combo.pack(side=tk.LEFT)
+        self.theme_combo.bind('<<ComboboxSelected>>', lambda e: self.on_theme_changed())
+
         # Excel data buttons
         ttk.Button(toolbar, text="Load Excel", command=self.load_excel_data).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="Refresh", command=self.refresh_excel_data).pack(side=tk.LEFT, padx=(0, 5))
@@ -227,11 +318,15 @@ class MainWindow:
     
     def load_initial_data(self):
         """Load initial data on startup"""
-        self.set_status("Loading Excel data...")
+        source = str(self.settings.get('data_source', 'excel')).lower()
+        self.set_status(f"Loading {('Dict' if source=='dict' else 'Excel')} data...")
         
         def load_data():
             try:
-                self.game_database = self.excel_service.load_game_database()
+                if source == 'dict':
+                    self.game_database = self.dict_service.load_game_database()
+                else:
+                    self.game_database = self.excel_service.load_game_database()
                 self.root.after(0, self.on_data_loaded)
             except Exception as e:
                 logger.error(f"Error loading initial data: {e}")
@@ -246,18 +341,22 @@ class MainWindow:
             self.update_database_stats()
             self.set_status("Excel data loaded successfully")
         else:
-            # Prompt user to locate the Excel data file when running from a packaged .exe
-            self.set_status("No Excel data found. Please select the Excel file.")
-            file_path = filedialog.askopenfilename(
-                title="Select Excel Data File",
-                filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
-            )
-            if file_path:
-                from pathlib import Path as _Path
-                self.excel_service.excel_path = _Path(file_path)
-                self.refresh_excel_data()
+            source = str(self.settings.get('data_source', 'excel')).lower()
+            if source == 'dict':
+                self.set_status("No Dict data found. Please check the 'Dict' folder path in Settings.")
             else:
-                self.set_status("Excel data not selected. Categories will be unavailable.")
+                # Prompt user to locate the Excel data file when running from a packaged .exe
+                self.set_status("No Excel data found. Please select the Excel file.")
+                file_path = filedialog.askopenfilename(
+                    title="Select Excel Data File",
+                    filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
+                )
+                if file_path:
+                    from pathlib import Path as _Path
+                    self.excel_service.excel_path = _Path(file_path)
+                    self.refresh_excel_data()
+                else:
+                    self.set_status("Excel data not selected. Categories will be unavailable.")
     
     def create_category_tabs(self):
         """Create tabs for each item category"""
@@ -270,8 +369,18 @@ class MainWindow:
                 self.notebook.forget(frame)
             except:
                 pass
-        
+        # Remove existing grouped container tabs
+        try:
+            for container in list(self._group_container_to_notebook.keys()):
+                try:
+                    self.notebook.forget(container)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
         self.item_editor_frames.clear()
+        self._group_container_to_notebook.clear()
         
         # Create tabs grouped by main categories (e.g., Clothes, Houses)
         group_to_container: Dict[str, ttk.Frame] = {}
@@ -381,11 +490,12 @@ class MainWindow:
         logger.info("Attempting automatic save file detection...")
         self.set_status("Auto-detecting latest save file...")
         
-        def auto_load():
+        def auto_load(latest_path: str):
             try:
-                # Try with the known DDV key first
+                # Try with the known DDV key first using the already-detected path
                 known_ddv_key = getattr(self, 'default_hex_key', "62 35 71 68 68 38 73 61 4A 38 55 6C 44 4A 55 7A 54 5A 58 64 32 54 67 36 6D 62 6F 38 57 38 6E 35")
-                success, message = self.save_service.auto_load_latest_save(known_ddv_key)
+                logger.info(f"Auto-loading: {latest_path}")
+                success, message = self.save_service.load_save_file(latest_path, known_ddv_key)
                 self.root.after(0, lambda: self.on_save_loaded(success, message))
             except Exception as e:
                 logger.error(f"Error in auto-load: {e}")
@@ -396,7 +506,7 @@ class MainWindow:
         if latest_save_path:
             logger.info(f"Auto-detected save file: {latest_save_path}")
             self.show_progress()
-            threading.Thread(target=auto_load, daemon=True).start()
+            threading.Thread(target=lambda: auto_load(latest_save_path), daemon=True).start()
             return True
         else:
             logger.info("No save files found for auto-detection")
@@ -506,7 +616,22 @@ class MainWindow:
             try:
                 # Update save data from editors
                 self.currency_frame.update_save_data()
-                for frame in self.item_editor_frames.values():
+                # Merge updates from either category tabs or Search tab per category
+                frames_by_category = dict(self.item_editor_frames)
+                # Check for an existing Search tab
+                try:
+                    for tab_id in self.notebook.tabs():
+                        widget = self.notebook.nametowidget(tab_id)
+                        from .search_results import SearchResultsFrame as _SRF
+                        if isinstance(widget, _SRF):
+                            # Override categories with search subframes
+                            for cat, sub in widget.category_frames.items():
+                                frames_by_category[cat] = sub
+                            break
+                except Exception:
+                    pass
+                # Apply updates per category
+                for frame in frames_by_category.values():
                     frame.update_save_data()
                 
                 success, message = self.save_service.save_file()
@@ -538,7 +663,18 @@ class MainWindow:
             try:
                 # Update save data from editors
                 self.currency_frame.update_save_data()
-                for frame in self.item_editor_frames.values():
+                frames_by_category = dict(self.item_editor_frames)
+                try:
+                    for tab_id in self.notebook.tabs():
+                        widget = self.notebook.nametowidget(tab_id)
+                        from .search_results import SearchResultsFrame as _SRF
+                        if isinstance(widget, _SRF):
+                            for cat, sub in widget.category_frames.items():
+                                frames_by_category[cat] = sub
+                            break
+                except Exception:
+                    pass
+                for frame in frames_by_category.values():
                     frame.update_save_data()
                 
                 success, message = self.save_service.save_file(file_path)
@@ -554,6 +690,22 @@ class MainWindow:
         if success:
             self.set_status("Save completed successfully")
             messagebox.showinfo("Success", message)
+            # Reload editors from model so every tab reflects the saved state
+            try:
+                if self.save_service.current_save_data:
+                    self.currency_frame.load_save_data(self.save_service.current_save_data)
+                    for frame in self.item_editor_frames.values():
+                        frame.load_save_data(self.save_service.current_save_data)
+                    # Refresh Search tab subframes if present
+                    for tab_id in self.notebook.tabs():
+                        widget = self.notebook.nametowidget(tab_id)
+                        from .search_results import SearchResultsFrame as _SRF
+                        if isinstance(widget, _SRF):
+                            for sub in widget.category_frames.values():
+                                sub.load_save_data(self.save_service.current_save_data)
+                            break
+            except Exception:
+                pass
         else:
             self.set_status(f"Save failed: {message}")
             messagebox.showerror("Error", message)
@@ -572,13 +724,17 @@ class MainWindow:
         self.refresh_excel_data()
     
     def refresh_excel_data(self):
-        """Refresh Excel data"""
-        self.set_status("Refreshing Excel data...")
+        """Refresh data from the selected source"""
+        source = str(self.settings.get('data_source', 'excel')).lower()
+        self.set_status(f"Refreshing {('Dict' if source=='dict' else 'Excel')} data...")
         self.show_progress()
         
         def refresh_data():
             try:
-                self.game_database = self.excel_service.load_game_database(force_reload=True)
+                if source == 'dict':
+                    self.game_database = self.dict_service.load_game_database(force_reload=True)
+                else:
+                    self.game_database = self.excel_service.load_game_database(force_reload=True)
                 self.root.after(0, self.on_data_refreshed)
             except Exception as e:
                 logger.error(f"Error refreshing data: {e}")
@@ -598,28 +754,37 @@ class MainWindow:
         query = self.search_var.get().strip()
         if not query or not self.game_database:
             return
-        
-        # Search across all categories
+
         results = self.game_database.search_all_items(query)
-        
-        if not results:
-            messagebox.showinfo("Search Results", f"No items found for '{query}'")
+        # If empty, inform and bail
+        total = sum(len(v) for v in results.values()) if results else 0
+        if total == 0:
+            messagebox.showinfo("Search", f"No items found for '{query}'")
             return
-        
-        # Show results in a new window
-        self.show_search_results(query, results)
+
+        # Either create or update a dedicated Search tab
+        self._open_search_tab(results)
     
-    def show_search_results(self, query: str, results: Dict):
-        """Show search results in a new window"""
-        # This would be implemented as a separate dialog
-        # For now, just show a simple message
-        total_results = sum(len(items) for items in results.values())
-        message = f"Found {total_results} items for '{query}':\n\n"
-        
-        for category, items in results.items():
-            message += f"{category.value.title()}: {len(items)} items\n"
-        
-        messagebox.showinfo("Search Results", message)
+    def _open_search_tab(self, results: Dict[ItemCategory, list]):
+        # If a Search tab exists, refresh it; else create one
+        existing_index = None
+        for i, tab_id in enumerate(self.notebook.tabs()):
+            text = self.notebook.tab(tab_id, 'text')
+            if text.startswith('Search'):
+                existing_index = i
+                break
+        if existing_index is not None:
+            # Tab already exists; refresh its content
+            widget = self.notebook.nametowidget(self.notebook.tabs()[existing_index])
+            if isinstance(widget, SearchResultsFrame):
+                widget.refresh_with(results)
+            self.notebook.select(existing_index)
+            return
+        # Create a new tab
+        search_frame = SearchResultsFrame(self.notebook, results, self.image_service, self.save_service)
+        total = sum(len(v) for v in results.values())
+        self.notebook.add(search_frame, text=f"Search ({total})")
+        self.notebook.select(search_frame)
     
     def add_all_items(self):
         """Add all items from current category to save"""
@@ -661,10 +826,48 @@ class MainWindow:
     
     def show_settings(self):
         """Show settings dialog"""
-        dialog = SettingsDialog(self.root)
+        # Preload dialog with current settings
+        dialog = SettingsDialog(self.root, initial_settings=self.settings)
         if dialog.result:
-            # Settings changed, might need to reload services
-            pass
+            # Persist settings
+            new_settings = dialog.get_settings()
+            # Ensure hex_key is preserved if dialog returns it
+            if 'hex_key' not in new_settings and 'hex_key' in self.settings:
+                new_settings['hex_key'] = self.settings['hex_key']
+            self.settings = {**self.settings, **new_settings}
+            self.settings_service.save(self.settings)
+
+            # Apply settings live
+            # Excel path
+            if self.settings.get('excel_path'):
+                self.excel_service.excel_path = Path(self.settings['excel_path'])
+            # Image paths and cache
+            if self.settings.get('image_zip_path'):
+                self.image_service.zip_path = Path(self.settings['image_zip_path'])
+            if self.settings.get('image_folder_path'):
+                self.image_service.folder_path = Path(self.settings['image_folder_path'])
+            if 'cache_size' in self.settings:
+                try:
+                    self.image_service.cache_size_limit = int(self.settings['cache_size'])
+                except Exception:
+                    pass
+            # Image sizes
+            from ..services.settings_service import SettingsService as _SS2
+            self.image_service.thumbnail_size = _SS2.parse_size(self.settings.get('thumbnail_size', '64x64'), (64, 64))
+            self.image_service.preview_size = _SS2.parse_size(self.settings.get('preview_size', '128x128'), (128, 128))
+            # Refresh image catalog
+            self.image_service.refresh_available_images()
+
+            # Backup retention
+            if 'max_backups' in self.settings:
+                try:
+                    self.save_service.max_backups = int(self.settings['max_backups'])
+                except Exception:
+                    pass
+
+            # Decryption key
+            if 'hex_key' in self.settings:
+                self.default_hex_key = str(self.settings['hex_key'])
     
     def show_backup_manager(self):
         """Show backup manager dialog"""
@@ -861,10 +1064,40 @@ class MainWindow:
         """Update database statistics display"""
         if self.game_database:
             stats = self.game_database.get_stats()
-            text = f"Items: {stats['total_items']} | Categories: {stats['categories']}"
+            source = str(self.settings.get('data_source', 'excel')).title()
+            text = f"Items: {stats['total_items']} | Categories: {stats['categories']} | Source: {source}"
             self.db_stats_label.config(text=text)
         else:
             self.db_stats_label.config(text="")
+
+    def on_data_source_changed(self):
+        """Handle quick switch between Excel and Dict sources"""
+        choice = self.data_source_var.get().strip().lower()
+        if choice not in ('excel', 'dict'):
+            return
+        self.settings['data_source'] = choice
+        # If switching to Dict without a valid folder, prompt
+        if choice == 'dict':
+            dict_path = Path(self.settings.get('dict_root', 'Dict'))
+            if not dict_path.exists():
+                self.choose_dict_folder()
+        self.settings_service.save(self.settings)
+        self.refresh_excel_data()
+
+    def choose_dict_folder(self):
+        """Prompt user to choose Dict root and persist it"""
+        folder = filedialog.askdirectory(title="Select Dict Root Folder")
+        if folder:
+            self.settings['dict_root'] = folder
+            # Update service and reload
+            try:
+                self.dict_service.dict_root = Path(folder)
+            except Exception:
+                pass
+            self.settings_service.save(self.settings)
+            # If Dict is selected, refresh now
+            if str(self.settings.get('data_source', 'excel')).lower() == 'dict':
+                self.refresh_excel_data()
     
     def on_closing(self):
         """Handle window closing"""
@@ -880,3 +1113,32 @@ class MainWindow:
     def run(self):
         """Start the application"""
         self.root.mainloop()
+
+    def cache_current_category_images(self):
+        """Download and cache online images for all items in the visible category."""
+        try:
+            frame = self._get_active_item_editor_frame()
+            if frame is None:
+                messagebox.showinfo("Cache Images", "Open a category tab to cache its images.")
+                return
+            collection = frame.collection
+            ids_and_names = [(gi.id, gi.name) for gi in collection]
+            total = len(ids_and_names)
+            if total == 0:
+                messagebox.showinfo("Cache Images", "No items to cache in this category.")
+                return
+            self.set_status(f"Caching images for {total} items...")
+            self.show_progress()
+            def worker():
+                done = 0
+                for item_id, name in ids_and_names:
+                    try:
+                        self.image_service.cache_image_for_item(item_id, name, frame.category)
+                    except Exception:
+                        pass
+                    done += 1
+                self.root.after(0, lambda: [self.hide_progress(), self.set_status("Caching complete"), messagebox.showinfo("Cache Images", f"Cached images for {total} items (where available)")])
+            threading.Thread(target=worker, daemon=True).start()
+        except Exception as e:
+            logger.error(f"Error caching images: {e}")
+            messagebox.showerror("Error", str(e))

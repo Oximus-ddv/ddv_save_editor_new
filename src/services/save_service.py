@@ -191,52 +191,65 @@ class SaveFileService:
     
     def find_latest_save_file(self, base_path: Optional[str] = None) -> Optional[str]:
         """
-        Automatically find the latest save file by timestamp
-        Looks in steam/windows folders for profile.json
+        Find the newest 'profile.json' save by file modification time.
+        - Searches recursively under the DDV save root
+        - Considers only paths under folders starting with 'steam' or 'windows'
+        - Break ties by parent folder mtime and prefer folders ending with '_r'
         """
         try:
             if not base_path:
-                # Default DDV save location
                 base_path = Path.home() / "AppData" / "LocalLow" / "Gameloft" / "Disney Dreamlight Valley"
             else:
                 base_path = Path(base_path)
-            
+
             if not base_path.exists():
                 logger.warning(f"DDV save directory not found: {base_path}")
                 return None
-            
+
             logger.info(f"Searching for save files in: {base_path}")
-            
-            # Find all directories that start with 'steam' or 'windows'
-            save_candidates = []
-            
-            for folder in base_path.iterdir():
-                if folder.is_dir() and (folder.name.startswith('steam') or folder.name.startswith('windows')):
-                    profile_path = folder / "profile.json"
-                    if profile_path.exists():
-                        stat = profile_path.stat()
-                        save_candidates.append({
-                            'path': str(profile_path),
-                            'folder': folder.name,
-                            'modified': stat.st_mtime,
-                            'size': stat.st_size
-                        })
-                        logger.info(f"Found save file: {folder.name}/profile.json (modified: {datetime.fromtimestamp(stat.st_mtime)})")
-            
-            if not save_candidates:
+
+            candidates: List[Dict[str, Any]] = []
+
+            for profile_path in base_path.rglob("profile.json"):
+                try:
+                    folder = profile_path.parent
+                    # Identify top-level folder under base_path for filtering
+                    try:
+                        rel = folder.relative_to(base_path)
+                        top_name = rel.parts[0] if rel.parts else folder.name
+                    except Exception:
+                        top_name = folder.name
+                    if not (top_name.startswith('steam') or top_name.startswith('windows')):
+                        continue
+
+                    fstat = profile_path.stat()
+                    dstat = folder.stat()
+                    prefer_remote = 1 if folder.name.endswith('_r') else 0
+                    candidates.append({
+                        'path': str(profile_path),
+                        'folder': folder.name,
+                        'modified': fstat.st_mtime,
+                        'folder_mtime': dstat.st_mtime,
+                        'size': fstat.st_size,
+                        'prefer': prefer_remote,
+                    })
+                except Exception:
+                    continue
+
+            if not candidates:
                 logger.warning("No save files found in steam/windows folders")
                 return None
-            
-            # Sort by modification time (newest first)
-            save_candidates.sort(key=lambda x: x['modified'], reverse=True)
-            latest_save = save_candidates[0]
-            
-            logger.info(f"Latest save file selected: {latest_save['folder']}/profile.json")
-            logger.info(f"Modified: {datetime.fromtimestamp(latest_save['modified'])}")
-            logger.info(f"Size: {latest_save['size'] / (1024*1024):.2f} MB")
-            
-            return latest_save['path']
-            
+
+            # Sort by file mtime desc, then folder mtime desc, then prefer_remote desc
+            candidates.sort(key=lambda x: (x['modified'], x['folder_mtime'], x['prefer']), reverse=True)
+            latest = candidates[0]
+
+            logger.info(f"Latest save file selected: {latest['folder']}/profile.json")
+            logger.info(f"Modified: {datetime.fromtimestamp(latest['modified'])}")
+            logger.info(f"Size: {latest['size'] / (1024*1024):.2f} MB")
+
+            return latest['path']
+
         except Exception as e:
             logger.error(f"Error finding latest save file: {e}")
             return None

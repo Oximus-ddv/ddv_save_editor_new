@@ -81,13 +81,24 @@ class ItemEditorFrame(ttk.Frame):
     
     def setup_save_items_panel(self):
         """Setup the items in save panel"""
-        right_frame = ttk.LabelFrame(self.paned, text="Items in Save", padding=10)
-        self.paned.add(right_frame, weight=1)
+        # Build right side. For PETS, show pet details on the right, side-by-side with inventory
+        right_container = ttk.Frame(self.paned)
+        self.paned.add(right_container, weight=1)
+        
+        if self.category == ItemCategory.PETS:
+            split = ttk.PanedWindow(right_container, orient=tk.HORIZONTAL)
+            split.pack(fill=tk.BOTH, expand=True)
+            left_col = ttk.Frame(split)
+            split.add(left_col, weight=3)
+            pets_frame = ttk.LabelFrame(split, text="Pet Details", padding=10)
+            split.add(pets_frame, weight=1)
+        else:
+            left_col = right_container
+            pets_frame = None
         
         # Search frame
-        search_frame = ttk.Frame(right_frame)
+        search_frame = ttk.Frame(left_col)
         search_frame.pack(fill=tk.X, pady=(0, 5))
-        
         ttk.Label(search_frame, text="Search:").pack(side=tk.LEFT)
         self.save_search_var = tk.StringVar()
         self.save_search_entry = ttk.Entry(search_frame, textvariable=self.save_search_var)
@@ -95,11 +106,12 @@ class ItemEditorFrame(ttk.Frame):
         self.save_search_entry.bind('<KeyRelease>', self.on_save_search)
         
         # Treeview for save items (with quantity)
-        tree_frame = ttk.Frame(right_frame)
+        tree_frame = ttk.Frame(left_col)
         tree_frame.pack(fill=tk.BOTH, expand=True)
         
         columns = ('ID', 'Name', 'Amount')
-        self.save_tree = ttk.Treeview(tree_frame, columns=columns, show='headings', height=15)
+        # Slightly smaller height so both panes fit
+        self.save_tree = ttk.Treeview(tree_frame, columns=columns, show='headings', height=13)
         
         self.save_tree.heading('ID', text='ID')
         self.save_tree.heading('Name', text='Name')
@@ -120,7 +132,7 @@ class ItemEditorFrame(ttk.Frame):
         scrollbar2.pack(side=tk.RIGHT, fill=tk.Y)
         
         # Buttons
-        button_frame = ttk.Frame(right_frame)
+        button_frame = ttk.Frame(left_col)
         button_frame.pack(fill=tk.X, pady=(5, 0))
         
         ttk.Button(button_frame, text="Edit Amount", command=self.edit_item_amount).pack(side=tk.LEFT, padx=(0, 5))
@@ -128,11 +140,29 @@ class ItemEditorFrame(ttk.Frame):
         ttk.Button(button_frame, text="Clear All", command=self.clear_all_items).pack(side=tk.LEFT)
         ttk.Label(button_frame, text="  ").pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Add All", command=self.add_all_items).pack(side=tk.LEFT)
-
-        # Pets editor panel (visible only for PETS category)
-        if self.category == ItemCategory.PETS:
-            pets_frame = ttk.LabelFrame(right_frame, text="Pet Details", padding=10)
-            pets_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        # Pets editor panel fields
+        if pets_frame is not None:
+            self.pet_name_var = tk.StringVar()
+            self.pet_custom_name_var = tk.StringVar()
+            self.pet_friendship_level_var = tk.IntVar(value=0)
+            self.pet_xp_var = tk.IntVar(value=0)
+            row = 0
+            ttk.Label(pets_frame, text="Name (legacy):").grid(row=row, column=0, sticky=tk.W)
+            ttk.Entry(pets_frame, textvariable=self.pet_name_var, width=22).grid(row=row, column=1, sticky=tk.W, padx=5)
+            row += 1
+            ttk.Label(pets_frame, text="Custom Name:").grid(row=row, column=0, sticky=tk.W, pady=(6, 0))
+            ttk.Entry(pets_frame, textvariable=self.pet_custom_name_var, width=22).grid(row=row, column=1, sticky=tk.W, padx=5, pady=(6, 0))
+            row += 1
+            ttk.Label(pets_frame, text="Friendship Level:").grid(row=row, column=0, sticky=tk.W, pady=(6, 0))
+            ttk.Spinbox(pets_frame, from_=0, to=50, textvariable=self.pet_friendship_level_var, width=6).grid(row=row, column=1, sticky=tk.W, padx=5, pady=(6, 0))
+            row += 1
+            ttk.Label(pets_frame, text="XP:").grid(row=row, column=0, sticky=tk.W, pady=(6, 0))
+            ttk.Spinbox(pets_frame, from_=0, to=999999, textvariable=self.pet_xp_var, width=8).grid(row=row, column=1, sticky=tk.W, padx=5, pady=(6, 0))
+            row += 1
+            ttk.Button(pets_frame, text="Apply to Selected Pet", command=self._apply_pet_fields_to_selected).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=(8, 0))
+            row += 1
+            ttk.Button(pets_frame, text="Load From Selected Pet", command=self._load_pet_fields_from_selected).grid(row=row, column=0, columnspan=2, sticky=tk.W, padx=0, pady=(6, 0))
 
             # Fields
             self.pet_name_var = tk.StringVar()
@@ -165,6 +195,8 @@ class ItemEditorFrame(ttk.Frame):
         
         # Bind double-click to edit amount
         self.save_tree.bind('<Double-Button-1>', lambda e: self.edit_item_amount())
+
+        # Removed image preview section for now
     
     def load_available_items(self):
         """Load available items into the listbox"""
@@ -181,6 +213,8 @@ class ItemEditorFrame(ttk.Frame):
             if not filter_text or filter_text.lower() in item.name.lower() or str(item.id) in filter_text:
                 display_text = f"{item.id} - {item.name}"
                 self.available_listbox.insert(tk.END, display_text)
+
+    # Removed image preview logic for now
     
     def refresh_save_list(self, filter_text: str = ""):
         """Refresh the save items list with optional filter"""

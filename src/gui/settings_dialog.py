@@ -2,16 +2,18 @@
 Settings dialog for DDV Save Editor
 """
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, messagebox
 from pathlib import Path
+from typing import Optional, Dict, Any
 
 
 class SettingsDialog:
     """Settings configuration dialog"""
     
-    def __init__(self, parent):
+    def __init__(self, parent, initial_settings: Optional[Dict[str, Any]] = None):
         self.parent = parent
         self.result = False
+        self._initial = initial_settings or {}
         
         # Create dialog window
         self.dialog = tk.Toplevel(parent)
@@ -27,20 +29,24 @@ class SettingsDialog:
         y = (self.dialog.winfo_screenheight() // 2) - (400 // 2)
         self.dialog.geometry(f"+{x}+{y}")
         
-        # Variables
-        self.excel_path_var = tk.StringVar(value="Disney Dream Light ID List - Mainted by Rubyelf.xlsx")
-        self.image_zip_var = tk.StringVar(value="img.zip")
-        self.image_folder_var = tk.StringVar(value="img")
-        self.backup_count_var = tk.IntVar(value=10)
-        self.auto_backup_var = tk.BooleanVar(value=True)
-        self.show_images_var = tk.BooleanVar(value=True)
-        self.cache_size_var = tk.IntVar(value=200)
-        # Default DDV hex key (from CyberChef configuration). Expose via environment override if packaged.
+        # Variables (prefilled from provided settings or defaults)
+        self.excel_path_var = tk.StringVar(value=self._initial.get("excel_path", "Disney Dream Light ID List - Mainted by Rubyelf.xlsx"))
+        self.image_zip_var = tk.StringVar(value=self._initial.get("image_zip_path", "img.zip"))
+        self.image_folder_var = tk.StringVar(value=self._initial.get("image_folder_path", "img"))
+        self.backup_count_var = tk.IntVar(value=int(self._initial.get("max_backups", 10)))
+        self.auto_backup_var = tk.BooleanVar(value=bool(self._initial.get("auto_backup", True)))
+        self.show_images_var = tk.BooleanVar(value=bool(self._initial.get("show_images", True)))
+        self.cache_size_var = tk.IntVar(value=int(self._initial.get("cache_size", 200)))
+        # Data source selection
+        self.data_source_var = tk.StringVar(value=str(self._initial.get("data_source", "excel")).lower())
+        self.dict_root_var = tk.StringVar(value=str(self._initial.get("dict_root", "Dict")))
+        # Default DDV hex key (from settings or environment override if packaged).
         import os
-        self.hex_key_var = tk.StringVar(value=os.environ.get(
+        default_hex = os.environ.get(
             "DDV_HEX_KEY",
             "62 35 71 68 68 38 73 61 4A 38 55 6C 44 4A 55 7A 54 5A 58 64 32 54 67 36 6D 62 6F 38 57 38 6E 35"
-        ))
+        )
+        self.hex_key_var = tk.StringVar(value=self._initial.get("hex_key", default_hex))
         
         self.setup_ui()
         
@@ -54,6 +60,8 @@ class SettingsDialog:
         
         # File paths tab
         self.setup_file_paths_tab(notebook)
+        # Data source tab
+        self.setup_data_source_tab(notebook)
         
         # Image settings tab
         self.setup_image_settings_tab(notebook)
@@ -100,6 +108,26 @@ class SettingsDialog:
         help_text = ("Note: The application will try the ZIP file first, then fall back to the folder. "
                     "You can use either or both options.")
         ttk.Label(frame, text=help_text, wraplength=450, foreground="gray").pack(anchor=tk.W, pady=(10, 0))
+
+    def setup_data_source_tab(self, notebook):
+        """Setup data source selection tab (Excel vs Dict)."""
+        frame = ttk.Frame(notebook, padding=10)
+        notebook.add(frame, text="Data Source")
+
+        src_frame = ttk.LabelFrame(frame, text="Choose Data Source", padding=10)
+        src_frame.pack(fill=tk.X)
+
+        ttk.Radiobutton(src_frame, text="Excel file", variable=self.data_source_var, value="excel").pack(anchor=tk.W)
+        ttk.Radiobutton(src_frame, text="Dict folder (JSON)", variable=self.data_source_var, value="dict").pack(anchor=tk.W, pady=(4,0))
+
+        dict_frame = ttk.LabelFrame(frame, text="Dict Folder", padding=10)
+        dict_frame.pack(fill=tk.X, pady=(10,0))
+
+        ttk.Label(dict_frame, text="Root folder containing category subfolders:").pack(anchor=tk.W)
+        df = ttk.Frame(dict_frame)
+        df.pack(fill=tk.X, pady=(5, 0))
+        ttk.Entry(df, textvariable=self.dict_root_var).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(df, text="Browse", command=self.browse_dict_folder).pack(side=tk.RIGHT, padx=(5, 0))
     
     def setup_image_settings_tab(self, notebook):
         """Setup image settings tab"""
@@ -252,6 +280,12 @@ class SettingsDialog:
         folder = filedialog.askdirectory(title="Select Image Folder")
         if folder:
             self.image_folder_var.set(folder)
+
+    def browse_dict_folder(self):
+        """Browse for Dict root folder"""
+        folder = filedialog.askdirectory(title="Select Dict Root Folder")
+        if folder:
+            self.dict_root_var.set(folder)
     
     def open_backup_folder(self):
         """Open backup folder in file explorer"""
@@ -271,7 +305,7 @@ class SettingsDialog:
     def clean_old_backups(self):
         """Clean old backup files"""
         # This would implement backup cleanup logic
-        tk.messagebox.showinfo("Clean Backups", "Old backups cleaned successfully!")
+        messagebox.showinfo("Clean Backups", "Old backups cleaned successfully!")
     
     def reset_defaults(self):
         """Reset all settings to defaults"""
@@ -306,5 +340,8 @@ class SettingsDialog:
             'show_images': self.show_images_var.get(),
             'cache_size': self.cache_size_var.get(),
             'thumbnail_size': self.thumbnail_size_var.get(),
-            'preview_size': self.preview_size_var.get()
+            'preview_size': self.preview_size_var.get(),
+            'hex_key': self.hex_key_var.get(),
+            'data_source': self.data_source_var.get(),
+            'dict_root': self.dict_root_var.get(),
         }

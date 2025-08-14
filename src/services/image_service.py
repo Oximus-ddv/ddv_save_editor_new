@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import Optional, Dict, Set, Tuple
 import logging
 from PIL import Image, ImageTk, ImageDraw, ImageFont
+import io
+import requests
+from bs4 import BeautifulSoup
 try:
     import tkinter as tk
 except ImportError:
@@ -36,6 +39,10 @@ class ImageService:
         # Available images tracking
         self._available_images: Set[str] = set()
         self._zip_file: Optional[zipfile.ZipFile] = None
+        # Persistent online cache support
+        self.online_cache_dir: Path = Path("img_online")
+        self.online_cache_zip: Path = Path("img_online.zip")
+        self._zip_file_online: Optional[zipfile.ZipFile] = None
         
         # Default image sizes
         self.thumbnail_size = (64, 64)
@@ -56,6 +63,24 @@ class ImageService:
             if self.folder_path.exists():
                 self._scan_folder_images()
                 logger.info(f"Scanned image folder: {self.folder_path}")
+            # Open and scan online cache
+            if self.online_cache_zip.exists():
+                try:
+                    self._zip_file_online = zipfile.ZipFile(self.online_cache_zip, 'r')
+                    for file_info in self._zip_file_online.filelist:
+                        if not file_info.is_dir() and self._is_image_file(file_info.filename):
+                            self._available_images.add(file_info.filename.replace('\\', '/'))
+                    logger.info(f"Opened online cache ZIP: {self.online_cache_zip}")
+                except Exception as e:
+                    logger.warning(f"Failed to open online cache ZIP: {e}")
+            if self.online_cache_dir.exists():
+                for image_file in self.online_cache_dir.rglob("*"):
+                    if image_file.is_file() and self._is_image_file(image_file.name):
+                        try:
+                            rel = image_file.relative_to(self.online_cache_dir)
+                        except Exception:
+                            continue
+                        self._available_images.add(str(rel).replace('\\', '/'))
             
             logger.info(f"Found {len(self._available_images)} available images")
             
@@ -143,6 +168,102 @@ class ImageService:
         if for_tkinter:
             return ImageTk.PhotoImage(placeholder)
         return placeholder
+
+    def get_image_by_name_online(self, name: str, category: ItemCategory, size: Tuple[int, int] = None,
+                                 for_tkinter: bool = False, cache_as: Optional[str] = None) -> Optional[Image.Image]:
+        """Fetch an image from mydreamlightvalley.com by item name as a fallback.
+
+        Strategy:
+        - For furniture: use /images/furnitures/<slug>.png directly.
+        - For clothing: fetch the page /en/clothing/<slug> and try to extract the main image.
+        Slugs are generated from name: lowercased, non-alphanumerics replaced by hyphens, multiple hyphens condensed.
+        """
+        if size is None:
+            size = self.thumbnail_size
+
+        def to_slug(text: str) -> str:
+            import re
+            t = text.lower()
+            t = re.sub(r"[^a-z0-9]+", "-", t)
+            t = re.sub(r"-+", "-", t).strip('-')
+            return t
+
+        try:
+            slug = to_slug(name)
+            image: Optional[Image.Image] = None
+            if category == ItemCategory.FURNITURE:
+                url = f"https://www.mydreamlightvalley.com/images/furnitures/{slug}.png"
+                resp = requests.get(url, timeout=6)
+                if resp.status_code == 200 and resp.content:
+                    image = Image.open(io.BytesIO(resp.content))
+                    image.load()
+            elif category.name.startswith('CLOTHES_') or category in {ItemCategory.CLOTHES_OTHER}:
+                url = f"https://www.mydreamlightvalley.com/en/clothing/{slug}"
+                resp = requests.get(url, timeout=8)
+                if resp.status_code == 200 and resp.text:
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    # Try common selectors
+                    img_tag = soup.find('img', { 'class': lambda c: c and ('product' in c or 'main' in c) }) or soup.find('img')
+                    if img_tag and img_tag.get('src'):
+                        img_url = img_tag['src']
+                        if img_url.startswith('/'):
+                            img_url = f"https://www.mydreamlightvalley.com{img_url}"
+                        r2 = requests.get(img_url, timeout=8)
+                        if r2.status_code == 200 and r2.content:
+                            image = Image.open(io.BytesIO(r2.content))
+                            image.load()
+            elif category == ItemCategory.PETS:
+                # Companion pages
+                url = f"https://www.mydreamlightvalley.com/en/companion/{slug}"
+                resp = requests.get(url, timeout=8)
+                if resp.status_code == 200 and resp.text:
+                    soup = BeautifulSoup(resp.text, 'html.parser')
+                    img_tag = soup.find('img')
+                    if img_tag and img_tag.get('src'):
+                        img_url = img_tag['src']
+                        if img_url.startswith('/'):
+                            img_url = f"https://www.mydreamlightvalley.com{img_url}"
+                        r2 = requests.get(img_url, timeout=8)
+                        if r2.status_code == 200 and r2.content:
+                            image = Image.open(io.BytesIO(r2.content))
+                            image.load()
+
+            if image:
+                if image.size != size:
+                    image = image.resize(size, Image.Resampling.LANCZOS)
+                # Persist to cache if requested
+                if cache_as:
+                    try:
+                        self._cache_persistent_image(cache_as, image)
+                    except Exception as e:
+                        logger.debug(f"Failed to cache image '{cache_as}': {e}")
+                if for_tkinter:
+                    return ImageTk.PhotoImage(image)
+                return image
+        except Exception as e:
+            logger.debug(f"Online image fetch failed for '{name}': {e}")
+
+        return None
+
+    def cache_image_for_item(self, item_id: int, name: str, category: ItemCategory) -> bool:
+        """Ensure an image for the given item is cached persistently.
+        Returns True if an image is available (either already present or newly fetched).
+        """
+        # Check if an image exists already via standard loader
+        possible_paths = self._generate_image_paths(item_id, category)
+        for path in possible_paths:
+            if path in self._available_images:
+                return True
+        # Try online fetch with deterministic cache path
+        fam = (
+            'furniture' if category == ItemCategory.FURNITURE else
+            'clothes' if category.name.startswith('CLOTHES_') or category == ItemCategory.CLOTHES_OTHER else
+            'pets' if category == ItemCategory.PETS else
+            category.value
+        )
+        cache_rel = f"{fam}/{item_id}.png"
+        img = self.get_image_by_name_online(name, category, size=self.preview_size, for_tkinter=False, cache_as=cache_rel)
+        return img is not None
     
     def _generate_image_paths(self, item_id: int, category: ItemCategory) -> list[str]:
         """Generate possible image paths for an item"""
@@ -183,12 +304,20 @@ class ImageService:
                 with self._zip_file.open(image_path) as img_file:
                     image = Image.open(img_file)
                     image.load()  # Ensure image is fully loaded
+            elif self._zip_file_online and image_path in self._available_images:
+                with self._zip_file_online.open(image_path) as img_file:
+                    image = Image.open(img_file)
+                    image.load()
             
             # Try file system
             elif image_path in self._available_images:
                 file_path = self.folder_path / image_path
                 if file_path.exists():
                     image = Image.open(file_path)
+                else:
+                    oc_path = self.online_cache_dir / image_path
+                    if oc_path.exists():
+                        image = Image.open(oc_path)
             
             if image:
                 # Resize if needed
