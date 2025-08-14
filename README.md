@@ -33,6 +33,9 @@ A modern, comprehensive save file editor for Disney Dreamlight Valley, rebuilt i
   - **Furniture**: All decorative items
   - **Tools**: Pickaxes, shovels, fishing rods, etc.
   - **Food & Materials**: Consumables and crafting components
+ 
+  Select which dict to load, either Excel or Dist.
+  Make sure either or both are located in the same folder as the .exe.
 
 ### 🎨 **Smart Content Filtering**
 - **Quality Control**: Automatically filters out debug/problematic items
