@@ -7,30 +7,77 @@ from enum import Enum
 
 
 class ItemCategory(str, Enum):
-    """Available item categories"""
-    PETS = "pets"
+    """Available item categories with their numeric IDs"""
+    PETS = "pets"  # ID: 1
     
-    # Clothing subcategories
-    CLOTHES_OUTFITS = "clothes_outfits"
-    CLOTHES_TOPS = "clothes_tops"
-    CLOTHES_BOTTOMS = "clothes_bottoms"
-    CLOTHES_HELMETS = "clothes_helmets"
-    CLOTHES_SHOES = "clothes_shoes"
-    CLOTHES_ACCESSORIES = "clothes_accessories"
-    CLOTHES_OTHER = "clothes_other"
+    # Clothing subcategories (10-19)
+    CLOTHES_OUTFITS = "clothes_outfits"  # ID: 10
+    CLOTHES_TOPS = "clothes_tops"  # ID: 11
+    CLOTHES_BOTTOMS = "clothes_bottoms"  # ID: 12
+    CLOTHES_HELMETS = "clothes_helmets"  # ID: 13
+    CLOTHES_SHOES = "clothes_shoes"  # ID: 14
+    CLOTHES_ACCESSORIES = "clothes_accessories"  # ID: 15
+    CLOTHES_OTHER = "clothes_other"  # ID: 16
     
-    # House subcategories
-    HOUSE_SKINS = "house_skins"
-    HOUSE_WALLPAPER = "house_wallpaper"
-    HOUSE_FLOORS = "house_floors"
-    NPC_HOUSES = "npc_houses"
+    # House subcategories (20-29)
+    HOUSE_SKINS = "house_skins"  # ID: 20
+    HOUSE_WALLPAPER = "house_wallpaper"  # ID: 21
+    HOUSE_FLOORS = "house_floors"  # ID: 22
+    NPC_HOUSES = "npc_houses"  # ID: 23
     
-    # Other categories
-    NPC_SKINS = "npc_skins"
-    FURNITURE = "furniture"
-    TOOLS = "tools"
-    FOOD = "food"
-    MATERIALS = "materials"
+    # Other categories (30+)
+    NPC_SKINS = "npc_skins"  # ID: 30
+    FURNITURE = "furniture"  # ID: 31
+    TOOLS = "tools"  # ID: 32
+    FOOD = "food"  # ID: 33
+    MATERIALS = "materials"  # ID: 34
+    
+    def get_id(self) -> int:
+        """Get the numeric ID for this category"""
+        category_ids = {
+            "pets": 1,
+            "clothes_outfits": 1,
+            "clothes_tops": 1,
+            "clothes_bottoms": 1,
+            "clothes_helmets": 1,
+            "clothes_shoes": 1,
+            "clothes_accessories": 1,
+            "clothes_other": 1,
+            "house_skins": 5,
+            "house_wallpaper": 2,
+            "house_floors": 2,
+            "npc_houses": 5,
+            "npc_skins": 7,
+            "furniture": 31,
+            "tools": 32,
+            "food": 33,
+            "materials": 34
+        }
+        return category_ids[self.value]
+    
+    @classmethod
+    def from_id(cls, id: int) -> Optional["ItemCategory"]:
+        """Get a category from its numeric ID"""
+        id_to_category = {
+            1: cls.PETS,
+            10: cls.CLOTHES_OUTFITS,
+            11: cls.CLOTHES_TOPS,
+            12: cls.CLOTHES_BOTTOMS,
+            13: cls.CLOTHES_HELMETS,
+            14: cls.CLOTHES_SHOES,
+            15: cls.CLOTHES_ACCESSORIES,
+            16: cls.CLOTHES_OTHER,
+            20: cls.HOUSE_SKINS,
+            21: cls.HOUSE_WALLPAPER,
+            22: cls.HOUSE_FLOORS,
+            23: cls.NPC_HOUSES,
+            30: cls.NPC_SKINS,
+            31: cls.FURNITURE,
+            32: cls.TOOLS,
+            33: cls.FOOD,
+            34: cls.MATERIALS
+        }
+        return id_to_category.get(id)
 
 
 class GameItem(BaseModel):

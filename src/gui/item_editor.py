@@ -9,8 +9,9 @@ import logging
 from ..models.game_item import ItemCategory, ItemCollection, GameItem, SaveData, PlayerInventoryItem, PetData
 from ..services.image_service import ImageService
 from ..services.save_service import SaveFileService
+from ..services.augmentation_service import InventoryType, add_item_to_save
 
-
+# Configure logging
 logger = logging.getLogger(__name__)
 
 
@@ -253,7 +254,9 @@ class ItemEditorFrame(ttk.Frame):
         """Add selected items to save"""
         selected_indices = self.available_listbox.curselection()
         if not selected_indices:
+            logger.warning("No items selected to add")
             return
+        logger.info(f"Adding selected items: {selected_indices}")
         
         # Get filter text to find correct items
         filter_text = self.available_search_var.get()
@@ -289,10 +292,17 @@ class ItemEditorFrame(ttk.Frame):
                     # Check if item already exists
                     existing_item = next((si for si in self.save_items if si.item_id == item.id), None)
                     if existing_item:
+                        logger.info(f"[ADD] Increasing amount for existing item {item.id} ({item.name})")
                         existing_item.amount += 1
                     else:
                         default_inventory = self._default_inventory_for_category(self.category)
-                        self.save_items.append(PlayerInventoryItem(item_id=item.id, amount=1, inventory_id=default_inventory))
+                        logger.info(f"[ADD] Adding new item {item.id} ({item.name}) to inventory {default_inventory}")
+                        new_item = PlayerInventoryItem(item_id=item.id, amount=1, inventory_id=default_inventory)
+                        self.save_items.append(new_item)
+                        # Also add to save_data's inventory_items
+                        if self.save_service.current_save_data:
+                            logger.info(f"[ADD] Adding item to save_data inventory")
+                            self.save_service.current_save_data.inventory_items.append(new_item)
                     added_count += 1
         
         if added_count > 0:
@@ -422,7 +432,9 @@ class ItemEditorFrame(ttk.Frame):
     def update_save_data(self):
         """Update the save data with current items"""
         if not self.save_service.current_save_data:
+            logger.warning("No save data available to update")
             return
+        logger.info(f"Updating save data for category: {self.category}")
         save_data = self.save_service.current_save_data
         if self.category == ItemCategory.PETS:
             # Reconcile pets in model based on displayed list (unique per pet_item_id)
@@ -442,20 +454,39 @@ class ItemEditorFrame(ttk.Frame):
             # Remove existing items of this category from save data
             save_data.inventory_items = [
                 item for item in save_data.inventory_items
-                if not self.collection.get_item(item.item_id)
+                if not self.collection.get_item(item.item_id)  # Keep items NOT in this category
+                or item.item_id in {si.item_id for si in self.save_items}  # Keep items that are in our current list
             ]
             # Normalize inventory group for categories that must live in a specific ListInventories bucket
             normalized_items: List[PlayerInventoryItem] = []
             for inv_item in self.save_items:
+                # Create a new item to avoid modifying the original
+                new_item = PlayerInventoryItem(
+                    item_id=inv_item.item_id,
+                    amount=inv_item.amount,
+                    state=inv_item.state,
+                    inventory_id=inv_item.inventory_id
+                )
+                
+                # Set the correct inventory ID based on category
                 if self.category in {ItemCategory.HOUSE_SKINS, ItemCategory.NPC_HOUSES}:
-                    inv_item.inventory_id = '5'
+                    new_item.inventory_id = '5'
+                    logger.info(f"[HOUSE] Setting item {new_item.item_id} to inventory 5")
                 elif self.category == ItemCategory.NPC_SKINS:
-                    inv_item.inventory_id = '7'
-                elif inv_item.inventory_id is None:
-                    inv_item.inventory_id = self._default_inventory_for_category(self.category)
+                    new_item.inventory_id = '7'
+                    logger.info(f"[SKIN] Setting item {new_item.item_id} to inventory 7")
+                elif new_item.inventory_id is None:
+                    new_item.inventory_id = self._default_inventory_for_category(self.category)
+                    logger.info(f"[DEFAULT] Setting item {new_item.item_id} to inventory {new_item.inventory_id}")
+                
+                # Force amount to 1 for certain categories
                 if self.category in {ItemCategory.HOUSE_SKINS, ItemCategory.NPC_HOUSES, ItemCategory.NPC_SKINS}:
-                    inv_item.amount = 1
-                normalized_items.append(inv_item)
+                    new_item.amount = 1
+                    logger.info(f"[AMOUNT] Forcing item {new_item.item_id} amount to 1")
+                
+                normalized_items.append(new_item)
+            
+            logger.info(f"Adding {len(normalized_items)} normalized items to save data")
             save_data.inventory_items.extend(normalized_items)
 
     # --- Pets-specific helpers ---
@@ -506,31 +537,36 @@ class ItemEditorFrame(ttk.Frame):
         # (Is Following field removed from UI)
 
     def _default_inventory_for_category(self, category: ItemCategory) -> str:
-        """Map categories to default inventory ids to preserve placement semantics.
-        These are best-effort defaults; existing items retain their original inventory_id.
-        """
-        # Note: Inventory ids are based on observed DDV saves and may vary.
-        # '1' often corresponds to general inventory. Specialized groups may differ.
-        category_defaults = {
-            ItemCategory.PETS: '1',
-            ItemCategory.FURNITURE: '1',
-            ItemCategory.TOOLS: '1',
-            ItemCategory.FOOD: '1',
-            ItemCategory.MATERIALS: '1',
-            ItemCategory.CLOTHES_OUTFITS: '1',
-            ItemCategory.CLOTHES_TOPS: '1',
-            ItemCategory.CLOTHES_BOTTOMS: '1',
-            ItemCategory.CLOTHES_HELMETS: '1',
-            ItemCategory.CLOTHES_SHOES: '1',
-            ItemCategory.CLOTHES_ACCESSORIES: '1',
-            ItemCategory.CLOTHES_OTHER: '1',
-            # House-related items (true buildings/skins) live in ListInventories['5'] in legacy app
-            ItemCategory.HOUSE_SKINS: '5',
-            ItemCategory.NPC_HOUSES: '5',
-            # Character skins live in ListInventories['7'] in legacy app
-            ItemCategory.NPC_SKINS: '7',
-            # Wallpapers/Floors are not buildings; keep them in general buckets
-            ItemCategory.HOUSE_WALLPAPER: '1',
-            ItemCategory.HOUSE_FLOORS: '1',
+        """Get the default inventory ID for a category using the augmentation service."""
+        # Map category to a sample item ID pattern
+        category_to_pattern = {
+            ItemCategory.PETS: 40000000,  # General items
+            ItemCategory.FURNITURE: 40000000,  # General items
+            ItemCategory.TOOLS: 110800033,  # Tools (Anakin's Lightsaber)
+            ItemCategory.FOOD: 40000000,  # General items
+            ItemCategory.MATERIALS: 40000000,  # General items
+            ItemCategory.CLOTHES_OUTFITS: 50000000,  # Clothes
+            ItemCategory.CLOTHES_TOPS: 50000000,  # Clothes
+            ItemCategory.CLOTHES_BOTTOMS: 50000000,  # Clothes
+            ItemCategory.CLOTHES_HELMETS: 50000000,  # Clothes
+            ItemCategory.CLOTHES_SHOES: 50000000,  # Clothes
+            ItemCategory.CLOTHES_ACCESSORIES: 50000000,  # Clothes
+            ItemCategory.CLOTHES_OTHER: 50000000,  # Clothes
+            ItemCategory.HOUSE_SKINS: 20000000,  # Houses
+            ItemCategory.NPC_HOUSES: 20000000,  # Houses
+            ItemCategory.NPC_SKINS: 170000000,  # NPC skins
+            ItemCategory.HOUSE_WALLPAPER: 160000001,  # Wallpapers (White Gold-Embossed Wall)
+            ItemCategory.HOUSE_FLOORS: 160100000,  # Floors (Wooden Floor)
         }
-        return category_defaults.get(category, '1')
+        
+        # Get a sample item ID for this category
+        sample_id = category_to_pattern.get(category, 40000000)  # Default to general items
+        
+        # Use the augmentation service to determine the inventory
+        inventory_id = InventoryType.get_inventory_for_id(sample_id)
+        if inventory_id is None:
+            logger.warning(f"Could not determine inventory for category {category}, using default '1'")
+            return "1"
+            
+        logger.info(f"Category {category} mapped to inventory {inventory_id} based on pattern {sample_id}")
+        return inventory_id
