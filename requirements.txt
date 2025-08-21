@@ -11,3 +11,4 @@ black
 pytest
 requests
 beautifulsoup4
+PyQt6

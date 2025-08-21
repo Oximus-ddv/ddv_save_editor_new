@@ -8,8 +8,8 @@
   "cache_size": 200,
   "thumbnail_size": "64x64",
   "preview_size": "128x128",
-  "theme": "light",
-  "hex_key": "62 35 71 68 68 38 73 61 4A 38 55 6C 44 4A 55 7A 54 5A 58 64 32 54 67 36 6D 62 6F 38 57 38 6E 35",
+  "theme": "dark",
+  "hex_key": "62357168683873614a38556c444a557a545a5864325467366d626f3857386e35",
   "dict_root": "Dict",
   "data_source": "dict"
 }

@@ -7,6 +7,7 @@ from typing import List, Optional
 import logging
 
 from ..models.game_item import ItemCategory, ItemCollection, GameItem, SaveData, PlayerInventoryItem, PetData
+from .toast_notification import ToastNotification
 from ..services.image_service import ImageService
 from ..services.save_service import SaveFileService
 from ..services.augmentation_service import InventoryType, add_item_to_save
@@ -26,6 +27,9 @@ class ItemEditorFrame(ttk.Frame):
         self.collection = collection
         self.image_service = image_service
         self.save_service = save_service
+        
+        # Find the root window for clipboard operations and toasts
+        self.root = self.winfo_toplevel()
         
         # Current items in save file
         self.save_items: List[PlayerInventoryItem] = []
@@ -79,6 +83,14 @@ class ItemEditorFrame(ttk.Frame):
         
         # Bind double-click to add item
         self.available_listbox.bind('<Double-Button-1>', lambda e: self.add_selected_items())
+        
+        # Right-click menu for copying
+        self.available_context_menu = tk.Menu(self.available_listbox, tearoff=0)
+        self.available_context_menu.add_command(label="Copy ID", command=self.copy_selected_id)
+        self.available_context_menu.add_command(label="Copy Name", command=self.copy_selected_name)
+        self.available_context_menu.add_separator()
+        self.available_context_menu.add_command(label="Add to Save", command=self.add_selected_items)
+        self.available_listbox.bind('<Button-3>', self.show_available_context_menu)
     
     def setup_save_items_panel(self):
         """Setup the items in save panel"""
@@ -196,6 +208,15 @@ class ItemEditorFrame(ttk.Frame):
         
         # Bind double-click to edit amount
         self.save_tree.bind('<Double-Button-1>', lambda e: self.edit_item_amount())
+        
+        # Right-click menu for copying
+        self.save_context_menu = tk.Menu(self.save_tree, tearoff=0)
+        self.save_context_menu.add_command(label="Copy ID", command=self.copy_selected_save_id)
+        self.save_context_menu.add_command(label="Copy Name", command=self.copy_selected_save_name)
+        self.save_context_menu.add_separator()
+        self.save_context_menu.add_command(label="Edit Amount", command=self.edit_item_amount)
+        self.save_context_menu.add_command(label="Remove", command=self.remove_selected_items)
+        self.save_tree.bind('<Button-3>', self.show_save_context_menu)
 
         # Removed image preview section for now
     
@@ -277,6 +298,35 @@ class ItemEditorFrame(ttk.Frame):
                         continue
                 except Exception:
                     pass
+
+                # Special case: Tools should be added to Player.Tools array
+                if self.category == ItemCategory.TOOLS:
+                    if not self.save_service.current_save_data:
+                        continue
+                    logger.info(f"[TOOL] Adding tool {item.id} ({item.name}) to Player.Tools array")
+                    if 'original_save' not in self.save_service.current_save_data.custom_data:
+                        self.save_service.current_save_data.custom_data['original_save'] = {}
+                    save_dict = self.save_service.current_save_data.custom_data['original_save']
+                    if 'Player' not in save_dict:
+                        save_dict['Player'] = {}
+                    player = save_dict['Player']
+                    if 'Tools' not in player:
+                        player['Tools'] = []
+                    tools = player['Tools']
+                    
+                    # Check if tool already exists
+                    if not any(tool.get('ToolItemID') == item.id for tool in tools):
+                        tools.append({
+                            'ToolItemID': item.id,
+                            'CurrentOfType': False
+                        })
+                        # Add to display list
+                        self.save_items.append(PlayerInventoryItem(item_id=item.id, amount=1))
+                        added_count += 1
+                        logger.info(f"[TOOL] Successfully added tool {item.id} ({item.name})")
+                    else:
+                        logger.info(f"[TOOL] Tool {item.id} ({item.name}) already exists")
+                    continue
 
                 # Pets are unique; add to save_data.pets rather than inventory
                 if self.category == ItemCategory.PETS:
@@ -436,6 +486,12 @@ class ItemEditorFrame(ttk.Frame):
             return
         logger.info(f"Updating save data for category: {self.category}")
         save_data = self.save_service.current_save_data
+        
+        # Special case: Tools are already updated in the original_save
+        if self.category == ItemCategory.TOOLS:
+            logger.info("[TOOL] Tools are managed directly in original_save, no update needed")
+            return
+            
         if self.category == ItemCategory.PETS:
             # Reconcile pets in model based on displayed list (unique per pet_item_id)
             desired_ids = {si.item_id for si in self.save_items}
@@ -536,13 +592,98 @@ class ItemEditorFrame(ttk.Frame):
             pet.xp = None
         # (Is Following field removed from UI)
 
+    def show_available_context_menu(self, event):
+        """Show context menu for available items list"""
+        try:
+            # Select the item under cursor if not already selected
+            index = self.available_listbox.nearest(event.y)
+            if index not in self.available_listbox.curselection():
+                self.available_listbox.selection_clear(0, tk.END)
+                self.available_listbox.selection_set(index)
+            self.available_context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.available_context_menu.grab_release()
+    
+    def show_save_context_menu(self, event):
+        """Show context menu for save items tree"""
+        try:
+            # Select the item under cursor if not already selected
+            item = self.save_tree.identify_row(event.y)
+            if item and item not in self.save_tree.selection():
+                self.save_tree.selection_set(item)
+            self.save_context_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self.save_context_menu.grab_release()
+    
+    def copy_selected_id(self):
+        """Copy ID of selected item in available items list"""
+        selected = self.available_listbox.curselection()
+        if not selected:
+            return
+        
+        # Get the selected text directly from the listbox
+        text = self.available_listbox.get(selected[0])
+        try:
+            # Extract ID from "ID - Name" format
+            item_id = text.split(" - ")[0].strip()
+            self.root.clipboard_clear()
+            self.root.clipboard_append(item_id)
+            ToastNotification(self.root, f"Copied ID: {item_id}")
+        except Exception as e:
+            logger.error(f"Error copying ID: {e}")
+    
+    def copy_selected_name(self):
+        """Copy name of selected item in available items list"""
+        selected = self.available_listbox.curselection()
+        if not selected:
+            return
+        
+        # Get the selected text directly from the listbox
+        text = self.available_listbox.get(selected[0])
+        try:
+            # Extract name from "ID - Name" format
+            name = text.split(" - ", 1)[1].strip()
+            self.root.clipboard_clear()
+            self.root.clipboard_append(name)
+            ToastNotification(self.root, f"Copied name: {name}")
+        except Exception as e:
+            logger.error(f"Error copying name: {e}")
+    
+    def copy_selected_save_id(self):
+        """Copy ID of selected item in save items tree"""
+        selected = self.save_tree.selection()
+        if not selected:
+            return
+        
+        values = self.save_tree.item(selected[0], 'values')
+        if values:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(values[0])  # ID is first column
+            ToastNotification(self.root, f"Copied ID: {values[0]}")
+    
+    def copy_selected_save_name(self):
+        """Copy name of selected item in save items tree"""
+        selected = self.save_tree.selection()
+        if not selected:
+            return
+        
+        values = self.save_tree.item(selected[0], 'values')
+        if values:
+            self.root.clipboard_clear()
+            self.root.clipboard_append(values[1])  # Name is second column
+            ToastNotification(self.root, f"Copied name: {values[1]}")
+
     def _default_inventory_for_category(self, category: ItemCategory) -> str:
         """Get the default inventory ID for a category using the augmentation service."""
+        # Special case: Tools should be added to Player.Tools array
+        if category == ItemCategory.TOOLS:
+            logger.info(f"[TOOL] Category {category} is for tools, items will be added to Player.Tools array")
+            return None
+            
         # Map category to a sample item ID pattern
         category_to_pattern = {
             ItemCategory.PETS: 40000000,  # General items
             ItemCategory.FURNITURE: 40000000,  # General items
-            ItemCategory.TOOLS: 110800033,  # Tools (Anakin's Lightsaber)
             ItemCategory.FOOD: 40000000,  # General items
             ItemCategory.MATERIALS: 40000000,  # General items
             ItemCategory.CLOTHES_OUTFITS: 50000000,  # Clothes

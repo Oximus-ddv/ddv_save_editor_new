@@ -26,16 +26,17 @@ logger = logging.getLogger(__name__)
 
 class InventoryType(Enum):
     """Inventory types and their corresponding IDs in the save file"""
-    GENERAL = "0"  # General game items (40xxxxx)
-    CLOTHES = "1"  # Clothing items (50xxxxx)
-    MAKEUP = "3"   # Makeup/Character Customization (140xxxxx)
-    WALLPAPERS = "4"  # Wallpapers and Floors (160xxxxx)
-    HOUSES = "5"   # House-related items (20xxxxx)
-    DECALS = "6"   # Touch of Magic/Decals (100xxxxx)
-    SKINS = "7"    # Character/NPC skins (170xxxxx)
-    ELIXIRS = "8"  # Special items and elixirs (180xxxxx)
-    GLIDERS = "9"  # Gliders (70xxxxx)
-    MANUALS = "10" # Training manuals (190xxxxx)
+    FURNITURE = "0"  # Furniture items
+    CLOTHES = "1"    # Clothing items
+    ACTIVITY = "2"   # Activity items
+    MAKEUP = "3"     # Makeup items
+    TRIMMING = "4"   # Trimming/Wallpapers/Floors
+    HOUSES = "5"     # Houses
+    TOUCHOFMAGIC = "6"  # Touch of Magic decorations
+    NPCSKINS = "7"   # NPC skins
+    BOARDGAME = "8"  # Board game items
+    AVATARFEATURE = "9"  # Avatar features
+    PHOTOMODE = "10"  # Photo mode items
 
     @staticmethod
     def get_inventory_for_id(item_id: int) -> Optional[str]:
@@ -43,19 +44,46 @@ class InventoryType(Enum):
         id_str = str(item_id)
         logger.info(f"Determining inventory for item ID: {id_str}")
         
+        # Special case: Tools (110XXXXXX) should be added to Player.Tools array, not inventory
+        if id_str.startswith("110"):
+            logger.info(f"[TOOL] Item {id_str} is a tool and should be added to Player.Tools array")
+            return None
+        
         # Map ID patterns to inventory types
         patterns = {
-            "40": "0",   # General
+            # Furniture items (inventory 0)
+            "40": "0",   # Furniture
+            "20": "0",   # More furniture items
+            
+            # Clothes (inventory 1)
             "50": "1",   # Clothes
-            "140": "3",  # Makeup
-            "16": "4",   # Wallpapers and Floors (16xxxx)
+            
+            # Activity items (inventory 2)
+            # "110": "2",  # Activity items - REMOVED: Tools should go to Player.Tools
+            
+            # Makeup (inventory 3)
+            "140": "3",  # Makeup items
+            
+            # Trimming/Wallpapers/Floors (inventory 4)
+            "16": "4",   # Wallpapers and Floors
+            
+            # Houses (inventory 5)
             "20": "5",   # Houses
-            "100": "6",  # Decals
-            "170": "1",  # Skins
-            "180": "8",  # Elixirs
-            "70": "9",   # Gliders
-            "190": "10", # Manuals
-            "110": "0",  # Let's try inventory 3 for tools first
+            
+            # Touch of Magic (inventory 6)
+            "100": "6",  # Touch of Magic decorations
+            
+            # NPC Skins (inventory 7)
+            "170": "7",  # NPC skins
+            
+            # Board games (inventory 8)
+            "180": "8",  # Board game items
+            
+            # Avatar features (inventory 9)
+            "190": "9",  # Avatar features
+            
+            # Photo mode (inventory 10)
+            "200": "10", # Photo mode items
         }
         
         # Try to match the ID pattern
@@ -129,6 +157,61 @@ def add_items_to_inventory(
             
     logger.info(f"Operation complete. Added: {added}, Replaced: {replaced}, Skipped: {skipped}")
     return added, replaced, skipped
+
+
+def add_specific_tool(save_dict: Dict[str, Any], tool_id: int, current_of_type: bool = False) -> bool:
+    """Add a specific tool to the player's inventory"""
+    # Get or create Tools list in Player
+    player_data = save_dict.setdefault('Player', {})
+    tools_list = player_data.setdefault('Tools', [])
+    
+    # Check if tool already exists
+    if not any(tool.get('ToolItemID') == tool_id for tool in tools_list):
+        logger.info(f"[TOOL] Adding new tool {tool_id} to Player.Tools array")
+        tools_list.append({
+            'ToolItemID': tool_id,
+            'CurrentOfType': current_of_type
+        })
+        return True
+    logger.info(f"[TOOL] Tool {tool_id} already exists in Player.Tools array")
+    return False
+
+
+def add_basic_tools(save_dict: Dict[str, Any], amount: int = 1) -> Dict[str, Any]:
+    """Add a basic set of tools to the player's inventory"""
+    # Basic tool IDs
+    basic_tools = {
+        110000002: "Nefarious Shovel",
+        110100002: "Nefarious Fishing Rod",
+        110400001: "Nefarious Pickaxe",
+        110400004: "Monster Pickaxe",
+        110500001: "Nefarious Watering Can",
+        110600001: "Nefarious Phone",
+        110700007: "Nefarious Hourglass"
+    }
+    
+    # Get or create Tools list in Player
+    player_data = save_dict.setdefault('Player', {})
+    tools_list = player_data.setdefault('Tools', [])
+    
+    # Add each tool if not already present
+    added_tools = []
+    for tool_id, tool_name in basic_tools.items():
+        # Check if tool already exists
+        if not any(tool.get('ToolItemID') == tool_id for tool in tools_list):
+            logger.info(f"[TOOL] Adding new tool {tool_id} ({tool_name}) to Player.Tools array")
+            tools_list.append({
+                'ToolItemID': tool_id,
+                'CurrentOfType': False
+            })
+            added_tools.append(tool_name)
+        else:
+            logger.info(f"[TOOL] Tool {tool_id} ({tool_name}) already exists in Player.Tools array")
+    
+    return {
+        'tools_added': len(added_tools),
+        'added_tools': added_tools
+    }
 
 
 def augment_save_dict(
@@ -220,6 +303,11 @@ def add_item_to_save(
         bool: True if item was added successfully, False otherwise
     """
     logger.info(f"[START] Adding single item. ID: {item_id}, Amount: {amount}, Override inventory: {inventory_id}")
+    
+    # Special case: Tools (110XXXXXX) should be added to Player.Tools array
+    if str(item_id).startswith("110"):
+        logger.info(f"[TOOL] Item {item_id} is a tool, adding to Player.Tools array")
+        return add_specific_tool(save_dict, item_id, False)
     
     if inventory_id is None:
         inventory_id = InventoryType.get_inventory_for_id(item_id)

@@ -1,6 +1,7 @@
 """
 Main GUI window for DDV Save Editor
 """
+import json
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from tkinter import font as tkfont
@@ -10,16 +11,18 @@ from typing import Optional, Dict, Any
 import threading
 
 from ..services.excel_service import ExcelDataService
+from .toast_notification import ToastNotification
 from ..services.image_service import ImageService
 from ..services.save_service import SaveFileService
 from ..services.settings_service import SettingsService
 from ..services.dict_service import DictDataService
-from ..services.augmentation_service import augment_save_dict
+from ..services.augmentation_service import augment_save_dict, add_basic_tools, add_specific_tool
 from ..models.game_item import GameDatabase, ItemCategory
 from .item_editor import ItemEditorFrame
 from .currency_editor import CurrencyEditorFrame
 from .settings_dialog import SettingsDialog
 from .search_results import SearchResultsFrame
+from .json_viewer import JsonViewerWindow
 
 
 logger = logging.getLogger(__name__)
@@ -123,6 +126,9 @@ class MainWindow:
         tools_menu.add_command(label="Validate Save File", command=self.validate_save_file)
         tools_menu.add_command(label="Clear Image Cache", command=self.clear_image_cache)
         tools_menu.add_separator()
+        tools_menu.add_command(label="Add Basic Tools", command=self.add_basic_tools)
+        tools_menu.add_command(label="Add Monster Pickaxe", command=lambda: self.add_specific_tool(110400004))
+        tools_menu.add_command(label="Add Main Pickaxe", command=lambda: self.add_specific_tool(110400000))
         tools_menu.add_command(label="Augment Save (legacy dicts)", command=self.augment_save_with_legacy_dicts)
         tools_menu.add_separator()
         tools_menu.add_command(label="Cache Online Images (Current Category)", command=self.cache_current_category_images)
@@ -255,6 +261,7 @@ class MainWindow:
         ttk.Button(toolbar, text="Auto-Load", command=self.load_save_file).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="Manual Load", command=self.load_save_file_manual).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="Save", command=self.save_file).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(toolbar, text="JSON Viewer", command=self.show_json_viewer).pack(side=tk.LEFT, padx=(0, 5))
         
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
         
@@ -358,6 +365,251 @@ class MainWindow:
                 else:
                     self.set_status("Excel data not selected. Categories will be unavailable.")
     
+    def create_inventory_tab(self) -> ttk.Frame:
+        """Create the orange Inventory tab that shows player's inventory"""
+        frame = ttk.Frame(self.notebook)
+        
+        # Configure orange style for the tab
+        style = ttk.Style()
+        style.configure('Orange.TFrame', background='#FFA500')
+        frame.configure(style='Orange.TFrame')
+        
+        # Create a treeview to display inventory items
+        tree = ttk.Treeview(frame, columns=('ID', 'Name', 'Amount', 'Category', 'Container'), show='headings')
+        tree.heading('ID', text='ID')
+        tree.heading('Name', text='Name')
+        tree.heading('Amount', text='Amount')
+        tree.heading('Category', text='Category')
+        tree.heading('Container', text='Container')
+        
+        # Add scrollbars
+        vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
+        hsb = ttk.Scrollbar(frame, orient="horizontal", command=tree.xview)
+        tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+        
+        # Grid layout
+        tree.grid(row=0, column=0, sticky='nsew')
+        vsb.grid(row=0, column=1, sticky='ns')
+        hsb.grid(row=1, column=0, sticky='ew')
+        
+        # Configure grid weights
+        frame.grid_rowconfigure(0, weight=1)
+        frame.grid_columnconfigure(0, weight=1)
+        
+        # Store tree reference
+        frame.tree = tree
+        
+        # Add refresh button
+        refresh_btn = ttk.Button(frame, text="Refresh", command=lambda: self.refresh_inventory_tab(frame))
+        refresh_btn.grid(row=2, column=0, sticky='w', padx=5, pady=5)
+        
+        # Bind double-click to edit amount
+        tree.bind('<Double-1>', lambda e: self.edit_inventory_amount(frame))
+        
+        # Store item data for saving
+        frame.items = {}
+        
+        return frame
+        
+    def refresh_inventory_tab(self, frame: ttk.Frame):
+        """Refresh the inventory tab with current data"""
+        if not self.save_service.current_save_data:
+            return
+            
+        tree = frame.tree
+        # Clear existing items
+        for item in tree.get_children():
+            tree.delete(item)
+            
+        save_data = self.save_service.current_save_data
+        original_save = save_data.custom_data.get('original_save', {})
+        player_data = original_save.get('Player', {})
+        
+        # Process only ContainerInventories.0
+        container_inventories = player_data.get('ContainerInventories', {})
+        container_0 = container_inventories.get('0', {})
+        inventory = container_0.get('Inventory', [])
+        
+        if isinstance(inventory, list):
+            for item in inventory:
+                item_id = str(item.get('ItemID', ''))
+                if item_id and item_id != '0':  # Skip empty slots
+                    name = self.get_item_name(item_id)
+                    amount = item.get('Amount', 0)
+                    category = self.get_item_category(item_id)
+                    state = item.get('State')
+                    # If there's a state with ConsummableData, show that item's info too
+                    if isinstance(state, dict) and 'ConsummableData' in state:
+                        consumable = state['ConsummableData']
+                        cons_id = str(consumable.get('ItemID', ''))
+                        if cons_id and cons_id != '0':
+                            cons_name = self.get_item_name(cons_id)
+                            cons_amount = consumable.get('Amount', 0)
+                            tree.insert('', 'end', values=(cons_id, f"{cons_name} (in {name})", cons_amount, "Consumable", "Player Inventory"))
+                    tree.insert('', 'end', values=(item_id, name, amount, category, "Player Inventory"))
+                    # Store item data for saving
+                    frame.items[item_id] = {'amount': amount, 'state': item.get('State')}
+                        
+    def edit_inventory_amount(self, frame: ttk.Frame):
+        """Edit the amount of a selected item"""
+        tree = frame.tree
+        selection = tree.selection()
+        if not selection:
+            return
+            
+        item = tree.item(selection[0])
+        item_id = item['values'][0]
+        current_amount = item['values'][2]
+        
+        # Ask for new amount
+        new_amount = simpledialog.askinteger(
+            "Edit Amount",
+            f"Enter new amount for {item['values'][1]}:",
+            initialvalue=current_amount,
+            minvalue=0,
+            maxvalue=99999
+        )
+        
+        if new_amount is not None:
+            # Update tree display
+            tree.set(selection[0], 'Amount', new_amount)
+            # Update stored data
+            if item_id in frame.items:
+                frame.items[item_id]['amount'] = new_amount
+            
+            # Update save data
+            if self.save_service.current_save_data:
+                save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
+                player_data = save_dict.get('Player', {})
+                container_inventories = player_data.get('ContainerInventories', {})
+                container_0 = container_inventories.get('0', {})
+                inventory = container_0.get('Inventory', [])
+                
+                # Find and update the item
+                for item in inventory:
+                    if str(item.get('ItemID', '')) == str(item_id):
+                        item['Amount'] = new_amount
+                        break
+                        
+                # Update the save data
+                self.save_service.current_save_data.custom_data['original_save'] = save_dict
+                
+    def get_item_name(self, item_id: str) -> str:
+        """Get item name from database"""
+        try:
+            # First try the game database
+            if self.game_database:
+                for category in self.game_database.get_all_categories():
+                    collection = self.game_database.get_collection(category)
+                    for item in collection:
+                        if str(item.id) == str(item_id):
+                            return item.name
+            
+            # If not found, try loading from allknowids.json
+            try:
+                with open('Dict/allknowids.json', 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    # Remove comments (lines starting with //)
+                    lines = [line for line in content.split('\n') if not line.strip().startswith('//')]
+                    cleaned_content = '\n'.join(lines)
+                    all_ids = json.loads(cleaned_content)
+                    item_id_str = str(item_id)
+                    if item_id_str in all_ids:
+                        return all_ids[item_id_str]
+            except Exception as e:
+                logger.warning(f"Error loading from allknowids.json: {e}")
+            
+            # If still not found, try the dict service directly
+            if hasattr(self, 'dict_service'):
+                item_id_str = str(item_id)
+                
+                # Try to load from specific dictionary files based on ID pattern
+                try:
+                    if item_id_str.startswith('50'):  # Clothes
+                        with open('Dict/Clothes/clotheslist.json', 'r', encoding='utf-8') as f:
+                            items = json.load(f)
+                            if item_id_str in items:
+                                return items[item_id_str]
+                    elif item_id_str.startswith('40'):  # Furniture
+                        with open('Dict/Furnitures/furnitures.json', 'r', encoding='utf-8') as f:
+                            items = json.load(f)
+                            if item_id_str in items:
+                                return items[item_id_str]
+                    elif item_id_str.startswith('20'):  # Houses
+                        with open('Dict/Houses/houses.json', 'r', encoding='utf-8') as f:
+                            items = json.load(f)
+                            if item_id_str in items:
+                                return items[item_id_str]
+                    elif item_id_str.startswith('170'):  # NPC Skins
+                        with open('Dict/NPC Skins/npcskins.json', 'r', encoding='utf-8') as f:
+                            items = json.load(f)
+                            if item_id_str in items:
+                                return items[item_id_str]
+                    elif item_id_str.startswith('110'):  # Tools
+                        with open('Dict/Tools/tools.json', 'r', encoding='utf-8') as f:
+                            items = json.load(f)
+                            if item_id_str in items:
+                                return items[item_id_str]
+                    elif item_id_str.startswith('16'):  # Wallpapers/Floors
+                        with open('Dict/WallpapersFloors/wallsfloors.json', 'r', encoding='utf-8') as f:
+                            items = json.load(f)
+                            if item_id_str in items:
+                                return items[item_id_str]
+                except Exception as e:
+                    logger.warning(f"Error loading item name from dictionary: {e}")
+            
+            return f"Item {item_id}"
+        except Exception as e:
+            logger.error(f"Error getting item name: {e}")
+            return f"Item {item_id}"
+        
+    def get_inventory_category_name(self, inv_id: str) -> str:
+        """Get category name for inventory ID"""
+        categories = {
+            "0": "Furniture",
+            "1": "Clothes",
+            "2": "Activity Items",
+            "3": "Makeup",
+            "4": "Trimming",
+            "5": "Houses",
+            "6": "Touch of Magic",
+            "7": "NPC Skins",
+            "8": "Board Games",
+            "9": "Avatar Features",
+            "10": "Photo Mode"
+        }
+        return categories.get(inv_id, "Unknown")
+        
+    def get_item_category(self, item_id: str) -> str:
+        """Get category based on item ID pattern"""
+        patterns = {
+            "40": "Furniture",
+            "50": "Clothes",
+            "110": "Activity",
+            "140": "Makeup",
+            "16": "Trimming",
+            "20": "Houses",
+            "100": "Touch of Magic",
+            "170": "NPC Skins",
+            "180": "Board Games",
+            "70": "Avatar Features",
+            "190": "Photo Mode",
+            "302": "Container Items",
+            "303": "Container Items",
+            "304": "Container Items",
+            "308": "Container Items",
+            "310": "Container Items",
+            "312": "Special Items",
+            "314": "Special Containers",
+            "316": "Container Items",
+            "317": "Container Items",
+            "30": "Container Items"  # Fallback for other 30xxxx items
+        }
+        for prefix, category in patterns.items():
+            if str(item_id).startswith(prefix):
+                return category
+        return "Unknown"
+        
     def create_category_tabs(self):
         """Create tabs for each item category"""
         if not self.game_database:
@@ -448,6 +700,16 @@ class MainWindow:
                 total += count
             # Update the top-level tab text with total count
             self.notebook.tab(container, text=f"{group_name} ({total})")
+        
+        # Add the Inventory tab at the end
+        inventory_frame = self.create_inventory_tab()
+        self.notebook.add(inventory_frame, text="Player Inventory")
+        
+        # Configure orange color for the Inventory tab
+        style = ttk.Style()
+        style.configure('Orange.TFrame', background='#FFA500')  # Orange background for frame
+        style.map('TNotebook.Tab',
+                 background=[('selected', '#FFA500')])  # Orange background for selected tab
 
     def _humanize_category(self, category: ItemCategory) -> str:
         """Make a user-friendly name from enum value (remove underscores, title case, fix abbreviations)."""
@@ -598,11 +860,18 @@ class MainWindow:
             # Update item editors
             for frame in self.item_editor_frames.values():
                 frame.load_save_data(self.save_service.current_save_data)
+            
+            # Update inventory tab
+            for tab_id in self.notebook.tabs():
+                widget = self.notebook.nametowidget(tab_id)
+                if isinstance(widget, ttk.Frame) and hasattr(widget, 'tree'):
+                    self.refresh_inventory_tab(widget)
+                    break
                 
-            messagebox.showinfo("Success", message)
+            ToastNotification(self.root, f"Save loaded: {message}")
         else:
             self.set_status(f"Failed to load save: {message}")
-            messagebox.showerror("Error", message)
+            ToastNotification(self.root, f"Error: {message}", duration=5.0)
     
     def save_file(self):
         """Save the current save file"""
@@ -689,7 +958,7 @@ class MainWindow:
         """Called when save operation completes"""
         if success:
             self.set_status("Save completed successfully")
-            messagebox.showinfo("Success", message)
+            ToastNotification(self.root, f"Save successful: {message}")
             # Reload editors from model so every tab reflects the saved state
             try:
                 if self.save_service.current_save_data:
@@ -708,7 +977,7 @@ class MainWindow:
                 pass
         else:
             self.set_status(f"Save failed: {message}")
-            messagebox.showerror("Error", message)
+            ToastNotification(self.root, f"Error saving: {message}", duration=5.0)
     
     def load_excel_data(self):
         """Load Excel data from a file"""
@@ -911,6 +1180,32 @@ class MainWindow:
         self.image_service.clear_cache()
         self.set_status("Image cache cleared")
     
+    def show_json_viewer(self):
+        """Show JSON viewer window"""
+        if not self.save_service.current_save_data:
+            messagebox.showwarning("Warning", "No save file loaded")
+            return
+            
+        # Get the raw save data
+        save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
+        
+        # Create and show the JSON viewer window
+        viewer = JsonViewerWindow(self.root)
+        viewer.load_json(save_dict)
+        
+        # Set up callback for when JSON is modified
+        def on_json_changed():
+            try:
+                # Update the save data when JSON is modified
+                new_data = viewer.get_json_data()
+                self.save_service.current_save_data.custom_data['original_save'] = new_data
+                self.set_status("Save data updated from JSON viewer")
+            except Exception as e:
+                logger.error(f"Error updating save data from JSON viewer: {e}")
+                messagebox.showerror("Error", f"Failed to update save data: {e}")
+        
+        viewer.on_modified_callback = on_json_changed
+        
     def show_about(self):
         """Show about dialog"""
         messagebox.showinfo(
@@ -925,6 +1220,65 @@ class MainWindow:
             "• Modern Python GUI"
         )
 
+    def add_specific_tool(self, tool_id: int, current_of_type: bool = False):
+        """Add a specific tool to the player's inventory"""
+        if not self.save_service.current_save_data:
+            messagebox.showwarning("Warning", "No save file loaded")
+            return False
+            
+        try:
+            # Get the raw save data
+            save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
+            
+            # Add tool
+            success = add_specific_tool(save_dict, tool_id, current_of_type)
+            
+            # Update the save data
+            self.save_service.current_save_data.custom_data['original_save'] = save_dict
+            
+            # Show results
+            if success:
+                messagebox.showinfo("Tool Added", f"Successfully added tool {tool_id}")
+            else:
+                messagebox.showinfo("Tool", f"Tool {tool_id} already exists")
+            
+            return success
+                
+        except Exception as e:
+            logger.error(f"Error adding tool: {e}")
+            messagebox.showerror("Error", f"Failed to add tool: {e}")
+            return False
+
+    def add_basic_tools(self):
+        """Add a basic set of tools to the player's inventory"""
+        if not self.save_service.current_save_data:
+            messagebox.showwarning("Warning", "No save file loaded")
+            return
+            
+        try:
+            # Get the raw save data
+            save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
+            
+            # Add tools
+            result = add_basic_tools(save_dict)
+            
+            # Update the save data
+            self.save_service.current_save_data.custom_data['original_save'] = save_dict
+            
+            # Show results
+            if result['tools_added'] > 0:
+                added_tools = "\n".join(f"• {tool}" for tool in result['added_tools'])
+                messagebox.showinfo(
+                    "Tools Added",
+                    f"Added {result['tools_added']} tools:\n\n{added_tools}"
+                )
+            else:
+                messagebox.showinfo("Tools", "No new tools needed - all basic tools already present")
+                
+        except Exception as e:
+            logger.error(f"Error adding tools: {e}")
+            messagebox.showerror("Error", f"Failed to add tools: {e}")
+            
     def augment_save_with_legacy_dicts(self):
         """Add missing clothes, houses, and NPC skins to the loaded save using legacy C# dicts.
         This mirrors the behavior in EditPets.cs but applies safely to the current Python model.
