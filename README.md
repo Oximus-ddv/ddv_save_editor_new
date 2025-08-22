@@ -7,10 +7,11 @@ A modern, comprehensive save file editor for Disney Dreamlight Valley, rebuilt i
 ## What the app does (quick summary)
 
 - Edit DDV save files safely (with automatic backups).
-- Load a live item database from an Excel spreadsheet and organize items into friendly categories/subcategories.
+- Load a live item database from an Excel spreadsheet or Dict folder.
 - Add/remove items, adjust amounts, and fully edit pets (CustomName, FriendshipLevel, XP).
 - Edit currencies and player info.
 - Filter out problematic/debug items automatically.
+- Full JSON editor for advanced editing.
 
 ## ✨ Key Features
 
@@ -34,7 +35,9 @@ A modern, comprehensive save file editor for Disney Dreamlight Valley, rebuilt i
   - **Tools**: Pickaxes, shovels, fishing rods, etc.
   - **Food & Materials**: Consumables and crafting components
  
-  Select which dict to load, either Excel or Dist.
+  Select which data source to load:
+  - **Excel**: Load from the Excel spreadsheet
+  - **Dict**: Load from the Dict folder structure
   Make sure either or both are located in the same folder as the .exe.
 
 ### 🎨 **Smart Content Filtering**
@@ -55,6 +58,13 @@ A modern, comprehensive save file editor for Disney Dreamlight Valley, rebuilt i
 - Real-time progress indicators
 - Comprehensive logging and status updates
 - Image preview support for items
+- Full JSON editor for advanced users
+
+### 🔍 **Advanced Editing Tools**
+- **Full Editor**: View and edit any value in the save file directly
+- **JSON Viewer**: Examine the raw save file structure
+- **Search**: Fast search functionality across all data
+- **Batch Operations**: Add all items, clear categories
 
 ## 🛠️ Installation
 
@@ -82,6 +92,7 @@ python main.py
 
 ### Advanced Features
 - **Manual Loading**: Use "Manual Load" if auto-detection doesn't work
+- **Full Editor**: Access the full save file editor for advanced editing
 - **Detailed Logs**: Check console output for comprehensive operation details
 - **Backup System**: Automatic timestamped backups before any changes
 
@@ -89,18 +100,21 @@ python main.py
 
 ### 🚀 **Enhanced Performance**
 - Faster save file detection and loading
-- Efficient Excel parsing with color detection
+- Efficient data parsing with both Excel and Dict support
 - Smart caching for images and data
+- Optimized search functionality
 
 ### 🧠 **Intelligent Features**
 - **Automatic Save Selection**: Finds most recent save across all game installations
 - **Smart Item Filtering**: Removes test/debug items automatically
 - **Quality Limits**: Respects game item limitations (1-max items, filtered categories)
+- **Full Editor**: Direct access to all save file values
 
 ### 📊 **Better Data Handling**
-- **Live Excel Integration**: No hardcoded item lists
-- **Category Intelligence**: Maps Excel categories to logical game groupings
+- **Dual Data Sources**: Excel or Dict folder support
+- **Category Intelligence**: Maps categories to logical game groupings
 - **Error Recovery**: Robust handling of corrupted or incomplete data
+- **Fast Search**: Efficient searching across all data
 
 ### 🔧 **Developer Improvements**
 - **Modern Architecture**: Clean separation of concerns
@@ -114,12 +128,13 @@ python main.py
 ddv_save_editor_python/
 ├── src/
 │   ├── gui/              # UI components (main window, editors, dialogs)
-│   ├── services/         # Core services (save, excel, image handling)  
+│   ├── services/         # Core services (save, excel, dict, image handling)  
 │   └── models/           # Data models and validation
-├── backups/              # Automatic save backups (created at runtime)
-├── requirements.txt      # Python dependencies
-├── main.py              # Application entry point
-└── img.zip              # Item images (optional)
+├── Dict/                 # Dictionary-based item data (optional)
+├── backups/             # Automatic save backups (created at runtime)
+├── requirements.txt     # Python dependencies
+├── main.py             # Application entry point
+└── img.zip             # Item images (optional)
 ```
 
 ## 🚨 Safety Features
@@ -129,48 +144,30 @@ ddv_save_editor_python/
 - **Error Recovery**: Comprehensive error handling with detailed logging
 - **Non-Destructive**: Original files are preserved
 
-## 🆚 Advantages Over C# Version
+## 🪟 Using the Windows .exe
 
-### ✅ **User Experience**
-- **Smarter**: Automatic save detection, intelligent filtering
-- **Faster**: Optimized loading and processing
-- **Safer**: Better error handling and recovery
-- **More Informative**: Detailed logging and progress feedback
-
-### ✅ **Technical Improvements**
-- **Cross-Platform**: Works on Windows, Mac, Linux
-- **Modern Libraries**: pandas, openpyxl, Pillow, cryptography
-- **Better Architecture**: Clean, maintainable code structure
-- **Type Safety**: Full type hints and validation
-
-### ✅ **Feature Rich**
-- **Dynamic Data**: Excel-driven item database
-- **Smart Filtering**: Automatic problem item detection
-- **Enhanced Categories**: 16 granular categories vs basic grouping
-- **Quality Controls**: Respects game limitations and rules
-
-## 🪟 Using the Windows .exe with the Excel file
-
-The app needs your Excel data file to populate categories and items. When running the packaged `.exe`, place the Excel next to the executable or select it when prompted.
+The app can use either an Excel file or Dict folder for item data. Place either (or both) next to the executable.
 
 ### Recommended folder layout
 
 ```
 release/
   DDV_Save_Editor.exe
-  Disney Dream Light ID List - Mainted by Rubyelf.xlsx   # or your own data file
+  Disney Dream Light ID List - Mainted by Rubyelf.xlsx   # Excel data source
+  Dict/                                                  # Dict data source
   img.zip                                               # optional (item images)
 ```
 
 ### First run
 
-- If the Excel is not found, the app will prompt you to select it. Pick your `.xlsx` and the categories will load.
-- After selecting once, the app caches data in memory for the session; reloading Excel uses the same picker.
+- Choose your data source (Excel or Dict) in the toolbar
+- If using Excel and it's not found, you'll be prompted to select it
+- If using Dict, ensure the Dict folder is present with the correct structure
 
 ### Auto-Load save
 
 1. Click "Auto-Load" to detect and load the latest DDV save.
-2. If categories are empty, ensure the Excel file is available as described above, then use "Refresh Excel Data" or restart the app.
+2. If categories are empty, check your data source settings and files.
 
 ### Decryption key
 
@@ -178,9 +175,10 @@ release/
 
 ### Troubleshooting
 
-- **Categories don’t load**: The Excel file is missing/not found. Place the `.xlsx` next to the `.exe` or select it when prompted.
-- **Images not showing**: Ensure `img.zip` or an `img/` folder exists if you want item images (optional).
-- **Auto-Load finds no save**: Use "Manual Load" and browse to your `profile.json` (Steam/Windows folders).
+- **Categories don't load**: Check your data source selection and ensure files are present
+- **Images not showing**: Ensure `img.zip` or an `img/` folder exists if you want item images (optional)
+- **Auto-Load finds no save**: Use "Manual Load" and browse to your `profile.json`
+- **Full Editor slow**: Large save files may take a moment to process
 
 ## 🤝 Contributing
 
