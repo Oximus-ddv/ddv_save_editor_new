@@ -680,10 +680,14 @@ class ItemEditorFrame(ttk.Frame):
             logger.info(f"[TOOL] Category {category} is for tools, items will be added to Player.Tools array")
             return None
             
+        # Special case: Furniture must always go to inventory 0
+        if category == ItemCategory.FURNITURE:
+            logger.info(f"[FURNITURE] Category {category} items must go to inventory 0")
+            return "0"
+            
         # Map category to a sample item ID pattern
         category_to_pattern = {
             ItemCategory.PETS: 40000000,  # General items
-            ItemCategory.FURNITURE: 40000000,  # General items
             ItemCategory.FOOD: 40000000,  # General items
             ItemCategory.MATERIALS: 40000000,  # General items
             ItemCategory.CLOTHES_OUTFITS: 50000000,  # Clothes

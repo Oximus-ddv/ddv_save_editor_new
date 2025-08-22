@@ -2,6 +2,7 @@
 Main GUI window for DDV Save Editor
 """
 import json
+import re
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, simpledialog
 from tkinter import font as tkfont
@@ -262,6 +263,7 @@ class MainWindow:
         ttk.Button(toolbar, text="Manual Load", command=self.load_save_file_manual).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="Save", command=self.save_file).pack(side=tk.LEFT, padx=(0, 5))
         ttk.Button(toolbar, text="JSON Viewer", command=self.show_json_viewer).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(toolbar, text="Full Editor", command=self.show_full_editor).pack(side=tk.LEFT, padx=(0, 5))
         
         ttk.Separator(toolbar, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
         
@@ -509,9 +511,22 @@ class MainWindow:
             try:
                 with open('Dict/allknowids.json', 'r', encoding='utf-8') as f:
                     content = f.read()
-                    # Remove comments (lines starting with //)
-                    lines = [line for line in content.split('\n') if not line.strip().startswith('//')]
+                    # Remove comments and fix common JSON issues
+                    lines = []
+                    for line in content.split('\n'):
+                        # Skip comment lines
+                        if line.strip().startswith('//'):
+                            continue
+                        # Remove inline comments
+                        if '//' in line:
+                            line = line.split('//', 1)[0]
+                        # Fix trailing commas
+                        if line.strip().endswith(',}') or line.strip().endswith(',]'):
+                            line = line.replace(',}', '}').replace(',]', ']')
+                        lines.append(line)
                     cleaned_content = '\n'.join(lines)
+                    # Fix any remaining trailing commas
+                    cleaned_content = re.sub(r',\s*([}\]])', r'\1', cleaned_content)
                     all_ids = json.loads(cleaned_content)
                     item_id_str = str(item_id)
                     if item_id_str in all_ids:
@@ -1180,6 +1195,33 @@ class MainWindow:
         self.image_service.clear_cache()
         self.set_status("Image cache cleared")
     
+    def show_full_editor(self):
+        """Show full editor window"""
+        if not self.save_service.current_save_data:
+            messagebox.showwarning("Warning", "No save file loaded")
+            return
+            
+        # Get the raw save data
+        save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
+        
+        # Create and show the full editor window
+        from .full_editor import FullEditorWindow
+        editor = FullEditorWindow(self.root, self.dict_service)
+        editor.load_json(save_dict)
+        
+        # Set up callback for when data is modified
+        def on_data_changed():
+            try:
+                # Update the save data when JSON is modified
+                new_data = editor.get_json_data()
+                self.save_service.current_save_data.custom_data['original_save'] = new_data
+                self.set_status("Save data updated from Full Editor")
+            except Exception as e:
+                logger.error(f"Error updating save data from Full Editor: {e}")
+                messagebox.showerror("Error", f"Failed to update save data: {e}")
+        
+        editor.on_modified_callback = on_data_changed
+
     def show_json_viewer(self):
         """Show JSON viewer window"""
         if not self.save_service.current_save_data:

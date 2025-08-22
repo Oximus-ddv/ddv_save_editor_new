@@ -54,6 +54,8 @@ class InventoryType(Enum):
             # Furniture items (inventory 0)
             "40": "0",   # Furniture
             "20": "0",   # More furniture items
+            "400": "0",  # More specific furniture items
+            "200": "0",  # More specific furniture items
             
             # Clothes (inventory 1)
             "50": "1",   # Clothes
