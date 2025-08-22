@@ -1,5 +1,7 @@
 This is a rework of : https://github.com/BenCG3/Ddv-Save-Editor/ big shootout to BenCG3 for his work !
 
+# If you have ideas to add to the editor, please share them here : https://github.com/Oximus-ddv/ddv_save_editor_new/discussions/7
+
 # DDV Save Editor - Python Version
 
 A modern, comprehensive save file editor for Disney Dreamlight Valley, rebuilt in Python with advanced features and enhanced functionality.
