@@ -646,6 +646,12 @@ class MainWindow:
         except Exception:
             pass
 
+        # Remove existing Player Inventory tab
+        for i in range(self.notebook.index("end")):
+            if self.notebook.tab(i, "text") == "Player Inventory":
+                self.notebook.forget(i)
+                break
+
         self.item_editor_frames.clear()
         self._group_container_to_notebook.clear()
         
