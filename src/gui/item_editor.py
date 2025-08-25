@@ -583,8 +583,8 @@ class ItemEditorFrame(ttk.Frame):
             save_data.inventory_items = [
                 item for item in save_data.inventory_items
                 if not self.collection.get_item(item.item_id)  # Keep items NOT in this category
-                or item.item_id in {si.item_id for si in self.save_items}  # Keep items that are in our current list
             ]
+            
             # Normalize inventory group for categories that must live in a specific ListInventories bucket
             normalized_items: List[PlayerInventoryItem] = []
             for inv_item in self.save_items:
