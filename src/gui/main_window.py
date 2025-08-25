@@ -378,11 +378,16 @@ class MainWindow:
         
         # Create a treeview to display inventory items
         tree = ttk.Treeview(frame, columns=('ID', 'Name', 'Amount', 'Category', 'Container'), show='headings')
-        tree.heading('ID', text='ID')
-        tree.heading('Name', text='Name')
-        tree.heading('Amount', text='Amount')
-        tree.heading('Category', text='Category')
-        tree.heading('Container', text='Container')
+
+        # Initialise default_order (will be set properly when data is loaded)
+        tree.default_order = {}
+        
+        # Set up column headings with sorting
+        tree.heading('ID', text='ID', command=lambda e=None: self.treeview_sort_column_inventory(tree, 'ID', False, False))
+        tree.heading('Name', text='Name', command=lambda e=None: self.treeview_sort_column_inventory(tree, 'Name', False, False))
+        tree.heading('Amount', text='Amount', command=lambda e=None: self.treeview_sort_column_inventory(tree, 'Amount', False, False))
+        tree.heading('Category', text='Category', command=lambda e=None: self.treeview_sort_column_inventory(tree, 'Category', False, False))
+        tree.heading('Container', text='Container', command=lambda e=None: self.treeview_sort_column_inventory(tree, 'Container', False, False))
         
         # Add scrollbars
         vsb = ttk.Scrollbar(frame, orient="vertical", command=tree.yview)
@@ -413,14 +418,63 @@ class MainWindow:
         edit_amount_btn = ttk.Button(button_frame, text="Edit Amount", command=lambda: self.edit_inventory_amount(frame))
         edit_amount_btn.grid(row=0, column=1)
         
-        # Bind double-click to edit amount
-        tree.bind('<Double-1>', lambda e: self.edit_inventory_amount(frame))
-        
+        # Bind double-click action to items only, no column headers
+        tree.bind('<Double-Button-1>', lambda e: self.edit_inventory_amount(frame) if tree.identify_region(e.x, e.y) == "cell" else None)
         # Store item data for saving
         frame.items = {}
         
         return frame
+
+    def on_tree_double_click(self, event):
+        """Handles double-click event for inventory tree: triggers edit_inventory_amount() only when clicking on cells"""
+        if self.tree.identify_region(event.x, event.y) == "cell":
+            self.edit_inventory_amount()
+
+    def treeview_sort_column_inventory(self, tv, col, reverse, return_to_default=False):
+        """Handles cyclical column sorting for inventory tree: default → ascending → descending → default"""
         
+        if return_to_default:
+            # Restore original order using saved default_order
+            if hasattr(tv, 'default_order') and col in tv.default_order:
+                for index, item in enumerate(tv.default_order[col]):
+                    try:
+                        tv.move(item, '', index)
+                    except tk.TclError:
+                        # Skip items that no longer exist after refresh
+                        continue
+            next_reverse, next_return_to_default, indicator = False, False, ""
+        else:
+            # Get column data for sorting
+            items = [(tv.set(item, col), item) for item in tv.get_children('')]
+            
+            # Sort numerically if all values are numbers, otherwise alphabetically
+            if all(str(item[0]).replace('.', '', 1).isdigit() for item in items if item[0] is not None and str(item[0]).strip()):
+                items.sort(key=lambda t: float(t[0]) if t[0] is not None and str(t[0]).strip() else 0, reverse=reverse)
+            else:
+                items.sort(key=lambda t: str(t[0]).lower() if t[0] is not None else '', reverse=reverse)
+            
+            # Apply sorted order to treeview
+            for index, (value, item) in enumerate(items):
+                tv.move(item, '', index)
+            
+            # Set next sort state and arrow direction
+            next_reverse, next_return_to_default, indicator = (False, True, " ▼") if reverse else (True, False, " ▲")
+        
+        # Remove sort arrows from all headers
+        for column in tv["columns"]:
+            heading_text = tv.heading(column)["text"]
+            if any(marker in heading_text for marker in [" ▲", " ▼"]):
+                tv.heading(column, text=heading_text[:-2])
+        
+        # Add sort arrow to current column and set next click action
+        current_text = tv.heading(col)["text"].replace(" ▲", "").replace(" ▼", "")
+        tv.heading(
+            col,
+            text=current_text + indicator,
+            command=lambda e=None, column=col, rev=next_reverse, ret_def=next_return_to_default:
+                    self.treeview_sort_column_inventory(tv, column, rev, ret_def)
+        )
+
     def refresh_inventory_tab(self, frame: ttk.Frame):
         """Refresh the inventory tab with current data"""
         if not self.save_service.current_save_data:
@@ -459,6 +513,16 @@ class MainWindow:
                     tree.insert('', 'end', values=(item_id, name, amount, category, "Player Inventory"))
                     # Store item data for saving
                     frame.items[item_id] = {'amount': amount, 'state': item.get('State')}
+
+        # Reset default_order to the current loaded order
+        tree.default_order = {c: list(tree.get_children('')) for c in tree["columns"]}
+        
+        # Reset all column headers to remove any sort indicators
+        for col in tree["columns"]:
+            heading_text = tree.heading(col)["text"]
+            clean_text = heading_text.replace(" ▲", "").replace(" ▼", "")
+            tree.heading(col, text=clean_text, 
+                        command=lambda e=None, c=col: self.treeview_sort_column_inventory(tree, c, False, False))
                         
     def edit_inventory_amount(self, frame: ttk.Frame):
         """Edit the amount of selected item(s)"""
