@@ -123,12 +123,14 @@ class ItemEditorFrame(ttk.Frame):
         tree_frame.pack(fill=tk.BOTH, expand=True)
         
         columns = ('ID', 'Name', 'Amount')
+        
         # Slightly smaller height so both panes fit
         self.save_tree = ttk.Treeview(tree_frame, columns=columns, show='headings', height=13)
         
-        self.save_tree.heading('ID', text='ID')
-        self.save_tree.heading('Name', text='Name')
-        self.save_tree.heading('Amount', text='Amount')
+        # Set up column headings with sorting
+        self.save_tree.heading('ID', text='ID', command=lambda e=None: self.treeview_sort_column(self.save_tree, 'ID', False, False))
+        self.save_tree.heading('Name', text='Name', command=lambda e=None: self.treeview_sort_column(self.save_tree, 'Name', False, False))
+        self.save_tree.heading('Amount', text='Amount', command=lambda e=None: self.treeview_sort_column(self.save_tree, 'Amount', False, False))
         
         self.save_tree.column('ID', width=100, anchor=tk.W)
         self.save_tree.column('Name', width=240, anchor=tk.W)
@@ -206,8 +208,8 @@ class ItemEditorFrame(ttk.Frame):
             # Auto-load fields when a pet is selected in the list
             self.save_tree.bind('<<TreeviewSelect>>', lambda e: self._load_pet_fields_from_selected())
         
-        # Bind double-click to edit amount
-        self.save_tree.bind('<Double-Button-1>', lambda e: self.edit_item_amount())
+        # Bind double-click action to items only, no column headers
+        self.save_tree.bind('<Double-Button-1>', self.on_tree_double_click)
         
         # Right-click menu for copying
         self.save_context_menu = tk.Menu(self.save_tree, tearoff=0)
@@ -220,6 +222,54 @@ class ItemEditorFrame(ttk.Frame):
 
         # Removed image preview section for now
     
+    def on_tree_double_click(self, event):
+        """Handles double-click event: triggers edit_item_amount() only when clicking on cells"""
+        if self.save_tree.identify_region(event.x, event.y) == "cell":
+            self.edit_item_amount()
+    
+    def treeview_sort_column(self, tv, col, reverse, return_to_default=False):
+        """Handles cyclical column sorting: default → ascending → descending → default"""
+        # Store original item order if not already saved
+        if not hasattr(tv, 'default_order') or not tv.default_order.get(col):
+            tv.default_order = {c: list(tv.get_children('')) for c in tv["columns"]}
+        
+        if return_to_default:
+            # Restore original order
+            for index, item in enumerate(tv.default_order[col]):
+                tv.move(item, '', index)
+            next_reverse, next_return_to_default, indicator = False, False, ""
+        else:
+            # Get column data for sorting
+            items = [(tv.set(item, col), item) for item in tv.get_children('')]
+            
+            # Sort numerically if all values are numbers, otherwise alphabetically
+            if all(str(item[0]).replace('.', '', 1).isdigit() for item in items if item[0] is not None and str(item[0]).strip()):
+                items.sort(key=lambda t: float(t[0]) if t[0] is not None and str(t[0]).strip() else 0, reverse=reverse)
+            else:
+                items.sort(key=lambda t: str(t[0]).lower() if t[0] is not None else '', reverse=reverse)
+            
+            # Apply sorted order to treeview
+            for index, (value, item) in enumerate(items):
+                tv.move(item, '', index)
+            
+            # Set next sort state and arrow direction
+            next_reverse, next_return_to_default, indicator = (False, True, " ▼") if reverse else (True, False, " ▲")
+        
+        # Remove sort arrows from all headers
+        for column in tv["columns"]:
+            heading_text = tv.heading(column)["text"]
+            if any(marker in heading_text for marker in [" ▲", " ▼"]):
+                tv.heading(column, text=heading_text[:-2])
+        
+        # Add sort arrow to current column and set next click action
+        current_text = tv.heading(col)["text"].replace(" ▲", "").replace(" ▼", "")
+        tv.heading(
+            col,
+            text=current_text + indicator,
+            command=lambda e=None, column=col, rev=next_reverse, ret_def=next_return_to_default:
+                    self.treeview_sort_column(tv, column, rev, ret_def)
+        )
+
     def load_available_items(self):
         """Load available items into the listbox"""
         self.available_items = list(self.collection.items.values())
@@ -256,6 +306,11 @@ class ItemEditorFrame(ttk.Frame):
                         name,
                         save_item.amount
                     ), tags=(tag,))
+        
+        # Preserves default item order for cyclical sorting
+        if hasattr(self.save_tree, 'default_order'):
+            self.save_tree.default_order = {c: list(self.save_tree.get_children('')) for c in self.save_tree["columns"]}
+        
         # For PETS, auto-select the first item (if any) and populate the detail fields
         if self.category == ItemCategory.PETS:
             children = self.save_tree.get_children()
