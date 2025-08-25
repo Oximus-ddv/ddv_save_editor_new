@@ -426,39 +426,56 @@ class ItemEditorFrame(ttk.Frame):
                 self.refresh_save_list(self.save_search_var.get())
     
     def edit_item_amount(self):
-        """Edit the amount of selected item"""
+        """Edit the amount of selected item(s)"""
         selected_items = self.save_tree.selection()
         if not selected_items:
             return
         
-        item = selected_items[0]
-        values = self.save_tree.item(item, 'values')
-        if not values:
+        # Get all selected item IDs
+        item_ids_to_edit = []
+        for item in selected_items:
+            values = self.save_tree.item(item, 'values')
+            if values:
+                item_ids_to_edit.append(int(values[0]))
+        
+        if not item_ids_to_edit:
             return
         
-        item_id = int(values[0])
-        current_amount = int(values[2])
-        
-        # Ask for new amount
-        new_amount = tk.simpledialog.askinteger(
-            "Edit Amount",
-            f"Enter new amount for {values[1]}:",
-            initialvalue=current_amount,
-            minvalue=0,
-            maxvalue=999999
-        )
+        if len(item_ids_to_edit) == 1:
+            # If single item selected - show item name and keep current amount
+            item = self.save_tree.item(selected_items[0])
+            item_name = item['values'][1]
+            current_amount = item['values'][2]
+            
+            new_amount = tk.simpledialog.askinteger(
+                "Edit Amount",
+                f"Enter new amount for {item_name}:",
+                initialvalue=current_amount,
+                minvalue=0,
+                maxvalue=999999
+            )
+        else:
+            # If multiple items selected - show selected count
+            item_text = "items"
+            new_amount = tk.simpledialog.askinteger(
+                "Edit Amount",
+                f"Enter new amount for {len(item_ids_to_edit)} selected {item_text}:",
+                minvalue=0,
+                maxvalue=999999
+            )
         
         if new_amount is not None:
-            # Find and update the item
-            save_item = next((si for si in self.save_items if si.item_id == item_id), None)
-            if save_item:
-                if new_amount == 0:
-                    # Remove item if amount is 0
-                    self.save_items.remove(save_item)
-                else:
-                    save_item.amount = new_amount
-                
-                self.refresh_save_list(self.save_search_var.get())
+            # Update all selected items
+            for item_id in item_ids_to_edit:
+                save_item = next((si for si in self.save_items if si.item_id == item_id), None)
+                if save_item:
+                    if new_amount == 0:
+                        # Remove item if amount is 0
+                        self.save_items.remove(save_item)
+                    else:
+                        save_item.amount = new_amount
+            
+            self.refresh_save_list(self.save_search_var.get())
     
     def load_save_data(self, save_data: SaveData):
         """Load save data and filter items for this category"""

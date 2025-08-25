@@ -373,8 +373,8 @@ class MainWindow:
         
         # Configure orange style for the tab
         style = ttk.Style()
-        style.configure('Orange.TFrame', background='#FFA500')
-        frame.configure(style='Orange.TFrame')
+        style.map('TNotebook.Tab',
+            background=[('selected', '#FFA500')])
         
         # Create a treeview to display inventory items
         tree = ttk.Treeview(frame, columns=('ID', 'Name', 'Amount', 'Category', 'Container'), show='headings')
@@ -401,9 +401,17 @@ class MainWindow:
         # Store tree reference
         frame.tree = tree
         
+        # Create button frame
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=2, column=0, sticky='w', padx=5, pady=5)
+
         # Add refresh button
-        refresh_btn = ttk.Button(frame, text="Refresh", command=lambda: self.refresh_inventory_tab(frame))
-        refresh_btn.grid(row=2, column=0, sticky='w', padx=5, pady=5)
+        refresh_btn = ttk.Button(button_frame, text="Refresh", command=lambda: self.refresh_inventory_tab(frame))
+        refresh_btn.grid(row=0, column=0, padx=(0, 5))
+
+        # Add edit amount button
+        edit_amount_btn = ttk.Button(button_frame, text="Edit Amount", command=lambda: self.edit_inventory_amount(frame))
+        edit_amount_btn.grid(row=0, column=1)
         
         # Bind double-click to edit amount
         tree.bind('<Double-1>', lambda e: self.edit_inventory_amount(frame))
@@ -453,47 +461,64 @@ class MainWindow:
                     frame.items[item_id] = {'amount': amount, 'state': item.get('State')}
                         
     def edit_inventory_amount(self, frame: ttk.Frame):
-        """Edit the amount of a selected item"""
+        """Edit the amount of selected item(s)"""
         tree = frame.tree
         selection = tree.selection()
         if not selection:
             return
-            
-        item = tree.item(selection[0])
-        item_id = item['values'][0]
-        current_amount = item['values'][2]
         
-        # Ask for new amount
-        new_amount = simpledialog.askinteger(
-            "Edit Amount",
-            f"Enter new amount for {item['values'][1]}:",
-            initialvalue=current_amount,
-            minvalue=0,
-            maxvalue=99999
-        )
+        if len(selection) == 1:
+            # If single item selected - show item name and keep current amount
+            item = tree.item(selection[0])
+            item_id = item['values'][0]
+            current_amount = item['values'][2]
+            
+            new_amount = simpledialog.askinteger(
+                "Edit Amount",
+                f"Enter new amount for {item['values'][1]}:",
+                initialvalue=current_amount,
+                minvalue=0,
+                maxvalue=99999
+            )
+        else:
+            # If multiple items selected - show selected count
+            item_text = "items"
+            new_amount = simpledialog.askinteger(
+                "Edit Amount",
+                f"Enter new amount for {len(selection)} selected {item_text}:",
+                minvalue=0,
+                maxvalue=99999
+            )
         
         if new_amount is not None:
-            # Update tree display
-            tree.set(selection[0], 'Amount', new_amount)
-            # Update stored data
-            if item_id in frame.items:
-                frame.items[item_id]['amount'] = new_amount
-            
-            # Update save data
-            if self.save_service.current_save_data:
-                save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
-                player_data = save_dict.get('Player', {})
-                container_inventories = player_data.get('ContainerInventories', {})
-                container_0 = container_inventories.get('0', {})
-                inventory = container_0.get('Inventory', [])
+            # Update all selected items
+            for selected_item in selection:
+                item = tree.item(selected_item)
+                item_id = item['values'][0]
                 
-                # Find and update the item
-                for item in inventory:
-                    if str(item.get('ItemID', '')) == str(item_id):
-                        item['Amount'] = new_amount
-                        break
-                        
-                # Update the save data
+                # Update tree display
+                tree.set(selected_item, 'Amount', new_amount)
+                
+                # Update stored data
+                if item_id in frame.items:
+                    frame.items[item_id]['amount'] = new_amount
+                
+                # Update save data
+                if self.save_service.current_save_data:
+                    save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
+                    player_data = save_dict.get('Player', {})
+                    container_inventories = player_data.get('ContainerInventories', {})
+                    container_0 = container_inventories.get('0', {})
+                    inventory = container_0.get('Inventory', [])
+                    
+                    # Find and update the item
+                    for inventory_item in inventory:
+                        if str(inventory_item.get('ItemID', '')) == str(item_id):
+                            inventory_item['Amount'] = new_amount
+                            break
+            
+            # Update the save data once after all items are processed
+            if self.save_service.current_save_data:
                 self.save_service.current_save_data.custom_data['original_save'] = save_dict
                 
     def get_item_name(self, item_id: str) -> str:
