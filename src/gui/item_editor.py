@@ -11,6 +11,7 @@ from .toast_notification import ToastNotification
 from ..services.image_service import ImageService
 from ..services.save_service import SaveFileService
 from ..services.augmentation_service import InventoryType, add_item_to_save
+from ..services import pet_service
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -34,6 +35,8 @@ class ItemEditorFrame(ttk.Frame):
         # Current items in save file
         self.save_items: List[PlayerInventoryItem] = []
         
+        self._pet_trace_active = True
+
         self.setup_ui()
         self.load_available_items()
     
@@ -128,9 +131,9 @@ class ItemEditorFrame(ttk.Frame):
         self.save_tree = ttk.Treeview(tree_frame, columns=columns, show='headings', height=13)
         
         # Set up column headings with sorting
-        self.save_tree.heading('ID', text='ID', command=lambda e=None: self.treeview_sort_column(self.save_tree, 'ID', False, False))
-        self.save_tree.heading('Name', text='Name', command=lambda e=None: self.treeview_sort_column(self.save_tree, 'Name', False, False))
-        self.save_tree.heading('Amount', text='Amount', command=lambda e=None: self.treeview_sort_column(self.save_tree, 'Amount', False, False))
+        self.save_tree.heading('ID', text='ID', command=lambda: self.treeview_sort_column('ID', False))
+        self.save_tree.heading('Name', text='Name', command=lambda: self.treeview_sort_column('Name', False))
+        self.save_tree.heading('Amount', text='Amount', command=lambda: self.treeview_sort_column('Amount', False))
         
         self.save_tree.column('ID', width=100, anchor=tk.W)
         self.save_tree.column('Name', width=240, anchor=tk.W)
@@ -158,33 +161,15 @@ class ItemEditorFrame(ttk.Frame):
         
         # Pets editor panel fields
         if pets_frame is not None:
-            self.pet_name_var = tk.StringVar()
-            self.pet_custom_name_var = tk.StringVar()
-            self.pet_friendship_level_var = tk.IntVar(value=0)
-            self.pet_xp_var = tk.IntVar(value=0)
-            row = 0
-            ttk.Label(pets_frame, text="Name (legacy):").grid(row=row, column=0, sticky=tk.W)
-            ttk.Entry(pets_frame, textvariable=self.pet_name_var, width=22).grid(row=row, column=1, sticky=tk.W, padx=5)
-            row += 1
-            ttk.Label(pets_frame, text="Custom Name:").grid(row=row, column=0, sticky=tk.W, pady=(6, 0))
-            ttk.Entry(pets_frame, textvariable=self.pet_custom_name_var, width=22).grid(row=row, column=1, sticky=tk.W, padx=5, pady=(6, 0))
-            row += 1
-            ttk.Label(pets_frame, text="Friendship Level:").grid(row=row, column=0, sticky=tk.W, pady=(6, 0))
-            ttk.Spinbox(pets_frame, from_=0, to=50, textvariable=self.pet_friendship_level_var, width=6).grid(row=row, column=1, sticky=tk.W, padx=5, pady=(6, 0))
-            row += 1
-            ttk.Label(pets_frame, text="XP:").grid(row=row, column=0, sticky=tk.W, pady=(6, 0))
-            ttk.Spinbox(pets_frame, from_=0, to=999999, textvariable=self.pet_xp_var, width=8).grid(row=row, column=1, sticky=tk.W, padx=5, pady=(6, 0))
-            row += 1
-            ttk.Button(pets_frame, text="Apply to Selected Pet", command=self._apply_pet_fields_to_selected).grid(row=row, column=0, columnspan=2, sticky=tk.W, pady=(8, 0))
-            row += 1
-            ttk.Button(pets_frame, text="Load From Selected Pet", command=self._load_pet_fields_from_selected).grid(row=row, column=0, columnspan=2, sticky=tk.W, padx=0, pady=(6, 0))
-
             # Fields
             self.pet_name_var = tk.StringVar()
             self.pet_custom_name_var = tk.StringVar()
             self.pet_friendship_level_var = tk.IntVar(value=0)
             self.pet_xp_var = tk.IntVar(value=0)
-            # Removed: Is Following UI
+            
+            # Link variables to update each other
+            self.pet_friendship_level_var.trace_add('write', self._update_xp_from_level)
+            self.pet_xp_var.trace_add('write', self._update_level_from_xp)
 
             row = 0
             ttk.Label(pets_frame, text="Name (legacy):").grid(row=row, column=0, sticky=tk.W)
@@ -194,10 +179,10 @@ class ItemEditorFrame(ttk.Frame):
             ttk.Entry(pets_frame, textvariable=self.pet_custom_name_var, width=30).grid(row=row, column=1, sticky=tk.W, padx=5, pady=(6, 0))
             row += 1
             ttk.Label(pets_frame, text="Friendship Level:").grid(row=row, column=0, sticky=tk.W, pady=(6, 0))
-            ttk.Spinbox(pets_frame, from_=0, to=50, textvariable=self.pet_friendship_level_var, width=6).grid(row=row, column=1, sticky=tk.W, padx=5, pady=(6, 0))
+            ttk.Spinbox(pets_frame, from_=1, to=5, textvariable=self.pet_friendship_level_var, width=6).grid(row=row, column=1, sticky=tk.W, padx=5, pady=(6, 0))
             row += 1
             ttk.Label(pets_frame, text="XP:").grid(row=row, column=0, sticky=tk.W, pady=(6, 0))
-            ttk.Spinbox(pets_frame, from_=0, to=999999, textvariable=self.pet_xp_var, width=8).grid(row=row, column=1, sticky=tk.W, padx=5, pady=(6, 0))
+            ttk.Spinbox(pets_frame, from_=0, to=99999, textvariable=self.pet_xp_var, width=8).grid(row=row, column=1, sticky=tk.W, padx=5, pady=(6, 0))
             row += 1
             # (Is Following checkbox removed)
 
@@ -227,48 +212,45 @@ class ItemEditorFrame(ttk.Frame):
         if self.save_tree.identify_region(event.x, event.y) == "cell":
             self.edit_item_amount()
     
-    def treeview_sort_column(self, tv, col, reverse, return_to_default=False):
+    def treeview_sort_column(self, col, reverse, return_to_default=False):
         """Handles cyclical column sorting: default → ascending → descending → default"""
-        # Store original item order if not already saved
-        if not hasattr(tv, 'default_order') or not tv.default_order.get(col):
-            tv.default_order = {c: list(tv.get_children('')) for c in tv["columns"]}
         
+        if not hasattr(self, 'default_save_items_order'):
+            self.default_save_items_order = list(self.save_items)
+
         if return_to_default:
-            # Restore original order
-            for index, item in enumerate(tv.default_order[col]):
-                tv.move(item, '', index)
+            self.save_items = list(self.default_save_items_order)
             next_reverse, next_return_to_default, indicator = False, False, ""
         else:
-            # Get column data for sorting
-            items = [(tv.set(item, col), item) for item in tv.get_children('')]
-            
-            # Sort numerically if all values are numbers, otherwise alphabetically
-            if all(str(item[0]).replace('.', '', 1).isdigit() for item in items if item[0] is not None and str(item[0]).strip()):
-                items.sort(key=lambda t: float(t[0]) if t[0] is not None and str(t[0]).strip() else 0, reverse=reverse)
+            # Get the key for sorting
+            if col == 'ID':
+                key = lambda item: item.item_id
+            elif col == 'Name':
+                key = lambda item: self.collection.get_item(item.item_id).name if self.collection.get_item(item.item_id) else ""
+            elif col == 'Amount':
+                key = lambda item: item.amount
             else:
-                items.sort(key=lambda t: str(t[0]).lower() if t[0] is not None else '', reverse=reverse)
-            
-            # Apply sorted order to treeview
-            for index, (value, item) in enumerate(items):
-                tv.move(item, '', index)
+                return
+
+            # Sort self.save_items
+            self.save_items.sort(key=key, reverse=reverse)
             
             # Set next sort state and arrow direction
             next_reverse, next_return_to_default, indicator = (False, True, " ▼") if reverse else (True, False, " ▲")
-        
+
         # Remove sort arrows from all headers
-        for column in tv["columns"]:
-            heading_text = tv.heading(column)["text"]
-            if any(marker in heading_text for marker in [" ▲", " ▼"]):
-                tv.heading(column, text=heading_text[:-2])
-        
+        for column in self.save_tree["columns"]:
+            self.save_tree.heading(column, text=column)
+
         # Add sort arrow to current column and set next click action
-        current_text = tv.heading(col)["text"].replace(" ▲", "").replace(" ▼", "")
-        tv.heading(
+        self.save_tree.heading(
             col,
-            text=current_text + indicator,
-            command=lambda e=None, column=col, rev=next_reverse, ret_def=next_return_to_default:
-                    self.treeview_sort_column(tv, column, rev, ret_def)
+            text=col + indicator,
+            command=lambda: self.treeview_sort_column(col, next_reverse, next_return_to_default)
         )
+
+        # Refresh the treeview
+        self.refresh_save_list(self.save_search_var.get())
 
     def load_available_items(self):
         """Load available items into the listbox"""
@@ -431,6 +413,18 @@ class ItemEditorFrame(ttk.Frame):
                             self.save_items.append(PlayerInventoryItem(item_id=item.id, amount=1))
                 
                 self.refresh_save_list(self.save_search_var.get())
+            elif self.category == ItemCategory.FURNITURE:
+                for item in self.available_items:
+                    # Skip items explicitly named "NOTHING"
+                    try:
+                        if str(item.name).strip().upper() == 'NOTHING':
+                            continue
+                    except Exception:
+                        pass
+                    existing_item = next((si for si in self.save_items if si.item_id == item.id), None)
+                    if not existing_item:
+                        self.save_items.append(PlayerInventoryItem(item_id=item.id, amount=1, inventory_id='unlocked'))
+                self.refresh_save_list(self.save_search_var.get())
             else:
                 for item in self.available_items:
                     # Skip items explicitly named "NOTHING"
@@ -457,6 +451,22 @@ class ItemEditorFrame(ttk.Frame):
             values = self.save_tree.item(item, 'values')
             if values:
                 item_ids_to_remove.append(int(values[0]))
+
+        if self.category == ItemCategory.TOOLS:
+            if self.save_service.current_save_data:
+                save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
+                player = save_dict.get('Player', {})
+                tools = player.get('Tools', [])
+                
+                # Filter out removed tools
+                player['Tools'] = [tool for tool in tools if tool.get('ToolItemID') not in item_ids_to_remove]
+                
+                logger.info(f"[TOOL] Removed {len(item_ids_to_remove)} tools from Player.Tools array")
+
+            # Also update local list
+            self.save_items = [item for item in self.save_items if item.item_id not in item_ids_to_remove]
+            self.refresh_save_list(self.save_search_var.get())
+            return
         
         if self.category == ItemCategory.PETS:
             # Remove from model and local list
@@ -471,9 +481,35 @@ class ItemEditorFrame(ttk.Frame):
     def clear_all_items(self):
         """Clear all items from save"""
         if messagebox.askyesno("Confirm", f"Remove all {len(self.save_items)} items from save?"):
+            if self.category == ItemCategory.TOOLS:
+                if self.save_service.current_save_data:
+                    save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
+                    player = save_dict.get('Player', {})
+                    if 'Tools' in player:
+                        # Get the IDs of the tools visible in the editor
+                        visible_tool_ids = {item.item_id for item in self.save_items}
+                        
+                        # Filter the tools list, keeping only the ones not visible
+                        original_tools = player.get('Tools', [])
+                        player['Tools'] = [tool for tool in original_tools if tool.get('ToolItemID') not in visible_tool_ids]
+                        
+                        logger.info(f"[TOOL] Cleared {len(visible_tool_ids)} tools from Player.Tools array")
+                
+                self.save_items.clear()
+                self.refresh_save_list(self.save_search_var.get())
+                return
+
             if self.category == ItemCategory.PETS:
                 if self.save_service.current_save_data:
                     self.save_service.current_save_data.pets.clear()
+                self.save_items.clear()
+                self.refresh_save_list(self.save_search_var.get())
+            elif self.category == ItemCategory.FURNITURE:
+                if self.save_service.current_save_data and 'original_save' in self.save_service.current_save_data.custom_data:
+                    save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
+                    player = save_dict.get('Player', {})
+                    if 'Unlocked' in player:
+                        player['Unlocked'] = []
                 self.save_items.clear()
                 self.refresh_save_list(self.save_search_var.get())
             else:
@@ -534,11 +570,42 @@ class ItemEditorFrame(ttk.Frame):
     
     def load_save_data(self, save_data: SaveData):
         """Load save data and filter items for this category"""
+        if self.category == ItemCategory.TOOLS:
+            category_items: list[PlayerInventoryItem] = []
+            if 'original_save' in save_data.custom_data:
+                player = save_data.custom_data['original_save'].get('Player', {})
+                tools = player.get('Tools', [])
+                for tool in tools:
+                    if 'ToolItemID' in tool:
+                        category_items.append(PlayerInventoryItem(item_id=tool['ToolItemID'], amount=1))
+            self.save_items = category_items
+            self.refresh_save_list(self.save_search_var.get())
+            return
+
         if self.category == ItemCategory.PETS:
             # Build pseudo-items for pets using item_id=pet_item_id and amount=1 for display
             category_items: list[PlayerInventoryItem] = []
             for pet in save_data.pets:
                 category_items.append(PlayerInventoryItem(item_id=pet.pet_item_id, amount=1))
+            self.save_items = category_items
+            self.refresh_save_list(self.save_search_var.get())
+        elif self.category == ItemCategory.FURNITURE:
+            category_items = []
+            # Load from inventory
+            for inv_item in save_data.inventory_items:
+                game_item = self.collection.get_item(inv_item.item_id)
+                if game_item:
+                    category_items.append(inv_item)
+            
+            # Load from unlocked furniture
+            if self.save_service.current_save_data and 'original_save' in self.save_service.current_save_data.custom_data:
+                save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
+                player = save_dict.get('Player', {})
+                unlocked_furniture = player.get('Unlocked', [])
+                for item_id in unlocked_furniture:
+                    if not any(item.item_id == item_id for item in category_items):
+                        category_items.append(PlayerInventoryItem(item_id=item_id, amount=1, inventory_id='unlocked'))
+
             self.save_items = category_items
             self.refresh_save_list(self.save_search_var.get())
         else:
@@ -578,6 +645,30 @@ class ItemEditorFrame(ttk.Frame):
                 new_pets.append(PetData(pet_item_id=pid))
             save_data.pets = new_pets
             return
+        elif self.category == ItemCategory.FURNITURE:
+            # Separate unlocked and inventory items
+            unlocked_items = []
+            inventory_items = []
+            for item in self.save_items:
+                if item.inventory_id == 'unlocked':
+                    unlocked_items.append(item.item_id)
+                else:
+                    inventory_items.append(item)
+
+            # Update unlocked furniture in original_save
+            if 'original_save' in self.save_service.current_save_data.custom_data:
+                save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
+                player = save_dict.get('Player', {})
+                player['Unlocked'] = unlocked_items
+
+            # Update inventory items
+            # Remove existing furniture from save data
+            self.save_service.current_save_data.inventory_items = [
+                item for item in self.save_service.current_save_data.inventory_items
+                if not self.collection.get_item(item.item_id)
+            ]
+            # Add back the furniture that should be in inventory
+            self.save_service.current_save_data.inventory_items.extend(inventory_items)
         else:
             # Remove existing items of this category from save data
             save_data.inventory_items = [
@@ -638,15 +729,17 @@ class ItemEditorFrame(ttk.Frame):
         return None
 
     def _load_pet_fields_from_selected(self):
+        self._pet_trace_active = False
         pet = self._get_selected_pet()
         if not pet:
+            self._pet_trace_active = True
             return
         # Populate fields; prefer custom_name when present
         self.pet_name_var.set(pet.name or "")
         self.pet_custom_name_var.set(pet.custom_name or "")
-        self.pet_friendship_level_var.set(pet.friendship_level or 0)
+        self.pet_friendship_level_var.set(pet.friendship_level or 1)
         self.pet_xp_var.set(pet.xp or 0)
-        # (Is Following field removed from UI)
+        self._pet_trace_active = True
 
     def _apply_pet_fields_to_selected(self):
         pet = self._get_selected_pet()
@@ -656,13 +749,40 @@ class ItemEditorFrame(ttk.Frame):
         pet.custom_name = self.pet_custom_name_var.get().strip() or None
         try:
             pet.friendship_level = int(self.pet_friendship_level_var.get())
-        except Exception:
-            pet.friendship_level = None
+        except (ValueError, TypeError):
+            pet.friendship_level = 1
         try:
             pet.xp = int(self.pet_xp_var.get())
-        except Exception:
-            pet.xp = None
-        # (Is Following field removed from UI)
+        except (ValueError, TypeError):
+            pet.xp = 0
+        
+        # Sync level and XP
+        pet.friendship_level = pet_service.get_level_for_xp(pet.xp)
+        
+        # Update UI
+        self._load_pet_fields_from_selected()
+
+    def _update_level_from_xp(self, *args):
+        if not self._pet_trace_active:
+            return
+        try:
+            xp = self.pet_xp_var.get()
+            level = pet_service.get_level_for_xp(xp)
+            if level != self.pet_friendship_level_var.get():
+                self.pet_friendship_level_var.set(level)
+        except (tk.TclError, ValueError):
+            pass  # Ignore errors during input
+
+    def _update_xp_from_level(self, *args):
+        if not self._pet_trace_active:
+            return
+        try:
+            level = self.pet_friendship_level_var.get()
+            xp = pet_service.get_xp_for_level(level)
+            if xp != self.pet_xp_var.get():
+                self.pet_xp_var.set(xp)
+        except (tk.TclError, ValueError):
+            pass # Ignore errors during input
 
     def show_available_context_menu(self, event):
         """Show context menu for available items list"""
