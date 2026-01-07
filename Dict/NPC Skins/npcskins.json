@@ -39,21 +39,48 @@
   "170000079": "Bright Ambition Tiana",
   "170000083": "Retro Diner Donald",
   "170000076": "Rock n Roll Mickey",
-
-
+  "170000088": "Spiderweb Dress Daisy (UPDATE 19)",
+  "170000089": "Frosty Pixie Tinker Bell(DLC3)",
+  "170000091": "Cozy Winter Anna (Update 20)",
+  "170000095": "Wishful Winter Cinderella (Update 20)",
+  "170000092": "Holiday Lights EVE (Update 20)",
+  "170000094": "Regal Splendor Elsa (Update 20)",
  
- // Well Sikns
+ //Quest or Bundle
+  "170000014": "Dapper WALL-E (Bundle)",
+  "170000021": "Vanessa(Bundle)",
+  "170000000": "Ariels Human Form (Quest-1)",
+  "170000029": "Jacks Santa Suit (Quest-1)",
+  "170000044": "Steamboat Mickey (Quest-1)",
+  "170000081": "Enchanted Evening Belle (UPDATE 19 Bundle)",
+  "170000087": "Enchanted Evening Beast (UPDATE 19 Quest-1)",
+
+  
+// Well Sikns
   "170200010": "Desert Oasis Well",
   "170200013": "Springtime Wishing Well",
   "170200012": "Wonderland Wishing Well",
   "170200014": "Never Land Wishing Well",
   "170200029": "Emotional Wishing Well",
-
+  "170200036": "Un Poco Loco Wishing Well (UPDATE 19)",
+  "170200039": "Shining Winter Wishing Well(DLC3)",
+  "170200048": "Fashionable Iron Wishing Well (Update 20)",
  
- // Goofys Stall Skins
+// Goofys Stall Skins
   "170100004": "Goofys Bayou Stall",
   "170100006": "Goofys Savanna Stall",
   "170100007": "Goofys Moana Stall",
   "170100010": "Goofys Tangled Stall",
   "170100012": "Goofys Springtime Stall",
+  "170100016": "Un Poco Loco Goofy Stall (UPDATE 19)",
+  "170100017": "Goofys Festive Stall(DLC3)",
+  
+//Castle Skins
+"170300008": "Halloween Castle (UPDATE 19)",
+"170300009": "Winter Holiday Dream Castle(DLC3)",
+
+//Shop and Store and Plaza
+  "170200042": "Winter Holiday Chez Remy(DLC3)",
+  "170200043": "Scrooge McDucks Holiday Shop(DLC3)",
+  "170300010": "Winter Holiday Plaza Square(DLC3)",
 }

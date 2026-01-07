@@ -64,6 +64,7 @@
   "40002405": "Golden Prisma Shrimp Trophy (QSH)",
   "40002413": "Gastons Coconut Gym (Quest-1)",
   "40002298": "Gastons Shipwreck (Picked Up-1)",
+  "40004670": "Election Victory Party (UPDATE 19 Quest-1)",
   
 //Brave Quest Furniture
   "40003313": "Clan DunBroch Banner (QSH)",
@@ -84,8 +85,8 @@
   "40001200": "Anna Statue (Quest-1)",
   
 //Hercules Quest Furniture
-  "40003317": "Marble Hades Statue (Quest-1)",
-  "40003656": "Hades Kiosk (Quest-1)",
+  "40003317": "Marble Hades Statue (Quest-4)",
+  "40003656": "Hades Kiosk (QSH)",
   "40003331": "Corinthian Marble DJ Table (Quest-1)",
   "40003682": "Lightning Generator (Quest-1)",
   
@@ -203,7 +204,7 @@
   "40002422": "Oogie Boogie Sign (Quest-8)",
   "40002421": "Pumpkin Kings Throne (Quest-1)",
   "40002048": "Holiday Tree-Portal (Quest-1)",
-  "40003714": "Compost Bin (Quest-1)",
+  "40003714": "Compost Bin (Crafted QSH)",
   
 //Toy Story Quest Furniture
   "40001804": "Alien Toy (QSH)",
@@ -227,19 +228,42 @@
 //Non Disney Related Quest Furniture
   "40001474": "Stage (QSH)",
   "40000333": "Granite Fire Bowl (QSH)",
-  "40003714": "Compost Bin (Quest-1)",
+  "40003714": "Compost Bin (Crafted QSH)",
   "40001152": "Scrooge McDucks Store Sign (Quest-4)",
   "40002703": "Attorney Stand (Quest-2)",
   "40001232": "Micberry Tree (Quest-1)",
   "40001675": "Mirror of True Seeing (Quest-1)",
   "40001766": "Scar Lure (Quest-1)",
   "40002018": "Carnivorous Floral Arrangement (Quest-2)",
-  "40001174": "Signpost — Dazzle Beach (Quest-1)",
-  "40001175": "Signpost — The Plaza (Quest-1)",
-  "40001176": "Signpost — Peaceful Meadow (Quest-1)",
-  "40001178": "Signpost — Forest of Valor (Quest-1)",
-  "40001179": "Signpost — Sunlit Plateau (Quest-1)",
-  "40001180": "Signpost — Glade of Trust (Quest-1)",
+  "40001174": "Signpost — Dazzle Beach (Quest-2)",
+  "40001175": "Signpost — The Plaza (Quest-3)",
+  "40001176": "Signpost — Peaceful Meadow (Quest-3)",
+  "40001178": "Signpost — Forest of Valor (Quest-3)",
+  "40001179": "Signpost — Sunlit Plateau (Quest-2)",
+  "40001180": "Signpost — Glade of Trust (Quest-2)",
   "40001182": "Signpost — Frosted Heights (Quest-1)",
   "40001183": "Signpost — Forgotten Lands (Quest-1)",
+  "40002714": "Geometrically Stabilized Tree (Quest-1)",
+  "40002715": "Geometrically Stabilized Cactus (Quest-1)",
+  "40002716": "Geometrically Stabilized Statue (Quest-1)",  
+ 
+//DLC3 Quest Furniture 
+  "40005084": "Welkum Family Poster (DLC3 Quest-1)",
+  "40005083": "Tiggerific Poster Billboard (DLC3 Quest-1)",
+  "40004744": "BallOOn Family BOuquet (DLC3 Quest-1)",
+  "40004673": "Fashionista Backdrop (DLC3 Quest-1)",
+  "40004393": "Wishblossom Fair Table (DLC3 Quest-3)",
+  "40500128": "Afternoon Tea Set(DLC3 Quest-1)",
+  
+  "40004772": "Cinderellas Room Divider (Update 20 Quest-1)",
+  "40004802": "Cinderellas Tea Party (Update 20 Quest-1)",
+  "40004769": "Spell Pumpkin (Update 20 Quest-1)",
+  "40005160": "Glass Shoe (Update 20 QSH)",
+  
+  "40005044": "Wishful Fun Fair Ticket Dispenser (DLC3 Picked Up-1)",
+  "40004745": "Wishful Fun Fair Stand (DLC3 Picked Up-1)",
+  "40004753": "Pixie Strength Test (DLC3 Picked Up-1)",
+  "40004987": "Ginormous Flowering Tree (DLC3 Picked Up-1)",
+
+"40001553": "Permafrost Cloud (QSH)",
 }

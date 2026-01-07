@@ -1,103 +1,99 @@
 """
 Full JSON editor window for DDV Save Editor with key-value-description format
 """
-import tkinter as tk
-from tkinter import ttk, messagebox
 import json
 import logging
 from typing import Optional, Dict, Any, Callable
+
+from PyQt6.QtWidgets import (
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
+    QPushButton, QTreeWidget, QTreeWidgetItem, QFrame,
+    QMessageBox, QDialogButtonBox, QWidget
+)
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QCursor
+
 from ..services.dict_service import DictDataService
 
 logger = logging.getLogger(__name__)
 
-class FullEditorWindow(tk.Toplevel):
+
+class FullEditorWindow(QDialog):
     """Window for viewing and editing the full save file in key-value-description format"""
     
     def __init__(self, parent, dict_service: DictDataService):
         super().__init__(parent)
-        self.title("Full Editor")
-        self.geometry("1000x600")
+        self.setWindowTitle("Full Editor")
+        self.resize(1000, 600)
         
         self.dict_service = dict_service
         
         # Make window modal
-        self.transient(parent)
-        self.grab_set()
+        self.setWindowModality(Qt.WindowModality.ApplicationModal)
         
-        # Create main frame with padding
-        main_frame = ttk.Frame(self, padding="5")
-        main_frame.pack(fill=tk.BOTH, expand=True)
+        # Create main layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(5, 5, 5, 5)
         
         # Create toolbar
-        toolbar = ttk.Frame(main_frame)
-        toolbar.pack(fill=tk.X, pady=(0, 5))
+        toolbar = QHBoxLayout()
+        layout.addLayout(toolbar)
         
         # Search
-        ttk.Label(toolbar, text="Find:").pack(side=tk.LEFT, padx=(0, 5))
-        self.search_var = tk.StringVar()
-        self.search_entry = ttk.Entry(toolbar, textvariable=self.search_var, width=40)
-        self.search_entry.pack(side=tk.LEFT, padx=(0, 5))
+        toolbar.addWidget(QLabel("Find:"))
+        self.search_edit = QLineEdit()
+        self.search_edit.setMinimumWidth(300)
+        toolbar.addWidget(self.search_edit)
         
         # Add search button
-        self.search_button = ttk.Button(toolbar, text="Search", command=self._on_search)
-        self.search_button.pack(side=tk.LEFT, padx=(0, 5))
+        self.search_button = QPushButton("Search")
+        self.search_button.clicked.connect(self._on_search)
+        toolbar.addWidget(self.search_button)
+        
+        # Add stretch to push everything to the left
+        toolbar.addStretch()
         
         # Bind Enter key to search
-        self.search_entry.bind('<Return>', lambda e: self._on_search())
+        self.search_edit.returnPressed.connect(self._on_search)
         
-        # Create tree view with scrollbars
-        tree_frame = ttk.Frame(main_frame)
-        tree_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Create tree view with key column and enable virtual mode for performance
-        self.tree = ttk.Treeview(tree_frame, columns=("value",), selectmode="extended")
-        self.tree.heading("#0", text="Key")  # First column for keys
-        self.tree.heading("value", text="Value")
+        # Create tree view
+        self.tree = QTreeWidget()
+        self.tree.setColumnCount(2)
+        self.tree.setHeaderLabels(["Key", "Value"])
         
         # Set column widths
-        self.tree.column("#0", width=600)  # Key column
-        self.tree.column("value", width=300)
+        self.tree.setColumnWidth(0, 600)  # Key column
+        self.tree.setColumnWidth(1, 300)  # Value column
+        
+        layout.addWidget(self.tree)
         
         # Store all items in memory for faster searching
         self.all_items = []
         self.filtered_items = []
         
-        # Create scrollbars
-        vsb = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
-        hsb = ttk.Scrollbar(tree_frame, orient="horizontal", command=self.tree.xview)
-        self.tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
-        
-        # Grid layout
-        self.tree.grid(row=0, column=0, sticky="nsew")
-        vsb.grid(row=0, column=1, sticky="ns")
-        hsb.grid(row=1, column=0, sticky="ew")
-        
-        # Configure grid weights
-        tree_frame.grid_rowconfigure(0, weight=1)
-        tree_frame.grid_columnconfigure(0, weight=1)
-        
-        # Bind double-click to edit
-        self.tree.bind("<Double-1>", self._on_double_click)
+        # Double-click to edit
+        self.tree.itemDoubleClicked.connect(self._on_double_click)
         
         # Store callback
         self.on_modified_callback: Optional[Callable] = None
         
         # Dictionary to store the full paths of items
         self.item_paths = {}
-        
+    
     def load_json(self, data: Dict[str, Any]):
         """Load JSON data into the tree"""
         # Clear existing data
         self.all_items.clear()
         self.filtered_items.clear()
         self.item_paths.clear()
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        self.tree.clear()
         
         # Show loading cursor
-        self.tree.configure(cursor="watch")
-        self.update_idletasks()
-        
+        self.setCursor(QCursor(Qt.CursorShape.WaitCursor))
+        QTimer.singleShot(0, lambda: self._load_json_data(data))
+    
+    def _load_json_data(self, data: Dict[str, Any]):
+        """Load JSON data in a separate function to avoid blocking the UI"""
         try:
             # Load game database once
             game_db = self.dict_service.load_game_database()
@@ -118,8 +114,8 @@ class FullEditorWindow(tk.Toplevel):
             self._display_items()
             
         finally:
-            self.tree.configure(cursor="")
-        
+            self.unsetCursor()
+    
     def _flatten_json(self, data: Any, prefix: str, result: Dict[str, Any]) -> None:
         """Convert nested JSON structure to flat key-value pairs"""
         if isinstance(data, dict):
@@ -138,76 +134,77 @@ class FullEditorWindow(tk.Toplevel):
                     result[new_key] = value
         else:
             result[prefix] = data
-                    
+    
     def _get_description(self, path: str) -> str:
         """Get description for a path"""
         # Try to get item name from dictionary service
         if path.endswith("ItemID"):
             try:
-                item_id = int(self.tree.set(self.tree.selection()[0], "value"))
-                item = self.dict_service.get_item_by_id(item_id)
+                item = self.tree.currentItem()
                 if item:
-                    return item.name
+                    item_id = int(item.text(1))  # Value is in column 1
+                    item = self.dict_service.get_item_by_id(item_id)
+                    if item:
+                        return item.name
             except:
                 pass
         return ""
-        
-    def _on_double_click(self, event):
+    
+    def _on_double_click(self, item: QTreeWidgetItem, column: int):
         """Handle double-click to edit value"""
-        item = self.tree.selection()[0] if self.tree.selection() else None
-        if not item:
+        if column != 1:  # Only allow editing values
             return
-            
-        # Get current value
-        current_value = self.tree.set(item, "value")
+        
+        path = self.item_paths.get(id(item))
+        if not path:
+            return
         
         # Create edit dialog
-        dialog = EditValueDialog(self, self.item_paths[item], current_value)
-        if dialog.result is not None:
+        dialog = EditValueDialog(self, path, item.text(1))
+        if dialog.exec() == QDialog.DialogCode.Accepted:
             # Update the tree
-            self.tree.set(item, "value", str(dialog.result))
+            item.setText(1, str(dialog.result))
             
             # Update description if it's an item ID
-            if self.item_paths[item].endswith("ItemID"):
+            if path.endswith("ItemID"):
                 try:
                     item_id = int(dialog.result)
-                    item = self.dict_service.get_item_by_id(item_id)
-                    if item:
-                        self.tree.set(item, "description", item.name)
+                    game_item = self.dict_service.get_item_by_id(item_id)
+                    if game_item:
+                        item.setToolTip(1, game_item.name)
                 except:
                     pass
             
             # Notify that data was modified
             if self.on_modified_callback:
                 self.on_modified_callback()
-                
+    
     def _display_items(self):
         """Display the current filtered items in the tree"""
         # Clear existing items
-        for item in self.tree.get_children():
-            self.tree.delete(item)
+        self.tree.clear()
         
         # Add items in batches
         batch_size = 1000
         for i in range(0, len(self.filtered_items), batch_size):
             batch = self.filtered_items[i:i + batch_size]
             for key, value in batch:
-                item = self.tree.insert("", "end", text=key, values=(value,))
-                self.item_paths[item] = key  # Store key for editing
+                item = QTreeWidgetItem([key, value])
+                self.tree.addTopLevelItem(item)
+                self.item_paths[id(item)] = key  # Store key for editing
             
-            # Update UI periodically
+            # Process events periodically
             if i % (batch_size * 5) == 0:
-                self.update_idletasks()
+                QTimer.singleShot(0, lambda: None)
     
     def _on_search(self):
         """Handle search button click or Enter key"""
-        search_text = self.search_var.get().lower()
+        search_text = self.search_edit.text().lower()
         
         # Disable search controls during search
-        self.search_button.configure(state="disabled")
-        self.search_entry.configure(state="disabled")
-        self.tree.configure(cursor="watch")
-        self.update_idletasks()
+        self.search_button.setEnabled(False)
+        self.search_edit.setEnabled(False)
+        self.setCursor(QCursor(Qt.CursorShape.WaitCursor))
         
         try:
             if not search_text:
@@ -226,17 +223,18 @@ class FullEditorWindow(tk.Toplevel):
             
             # Select and scroll to first match if any
             if self.filtered_items:
-                first = self.tree.get_children()[0]
-                self.tree.selection_set(first)
-                self.tree.see(first)
+                first_item = self.tree.topLevelItem(0)
+                if first_item:
+                    self.tree.setCurrentItem(first_item)
+                    self.tree.scrollToItem(first_item)
                 
         finally:
             # Re-enable search controls
-            self.search_button.configure(state="normal")
-            self.search_entry.configure(state="normal")
-            self.tree.configure(cursor="")
-            self.search_entry.focus_set()
-                
+            self.search_button.setEnabled(True)
+            self.search_edit.setEnabled(True)
+            self.unsetCursor()
+            self.search_edit.setFocus()
+    
     def get_json_data(self) -> Dict[str, Any]:
         """Convert the current tree view back to a JSON object"""
         result = {}
@@ -277,13 +275,14 @@ class FullEditorWindow(tk.Toplevel):
                 current[last_part] = self._convert_value(value)
         
         # Process all visible items
-        for item in self.tree.get_children():
-            path = self.item_paths[item]
-            value = self.tree.set(item, "value")
+        for i in range(self.tree.topLevelItemCount()):
+            item = self.tree.topLevelItem(i)
+            path = self.item_paths[id(item)]
+            value = item.text(1)
             process_path(path, value)
             
         return result
-        
+    
     def _convert_value(self, value: str) -> Any:
         """Convert string value to appropriate type"""
         # Try to convert to number
@@ -307,49 +306,48 @@ class FullEditorWindow(tk.Toplevel):
         # Default to string
         return value
 
-class EditValueDialog:
+
+class EditValueDialog(QDialog):
     """Dialog for editing values"""
     
     def __init__(self, parent, path: str, current_value: str):
+        super().__init__(parent)
+        self.setWindowTitle("Edit Value")
+        self.setWindowModality(Qt.WindowModality.WindowModal)
+        
         self.result = None
         
-        # Create dialog window
-        self.dialog = tk.Toplevel(parent)
-        self.dialog.title(f"Edit Value")
-        self.dialog.transient(parent)
-        self.dialog.grab_set()
-        
-        # Add padding
-        frame = ttk.Frame(self.dialog, padding="10")
-        frame.pack(fill=tk.BOTH, expand=True)
+        # Create layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 10, 10, 10)
         
         # Show path
-        ttk.Label(frame, text=f"Path: {path}").pack(pady=(0, 10))
+        layout.addWidget(QLabel(f"Path: {path}"))
         
         # Value entry
-        ttk.Label(frame, text="Value:").pack(pady=(0, 5))
-        self.entry = ttk.Entry(frame, width=40)
-        self.entry.insert(0, current_value)
-        self.entry.pack(pady=(0, 10))
-        self.entry.select_range(0, tk.END)
+        layout.addWidget(QLabel("Value:"))
+        self.entry = QLineEdit()
+        self.entry.setText(current_value)
+        self.entry.selectAll()
+        layout.addWidget(self.entry)
         
         # Buttons
-        btn_frame = ttk.Frame(frame)
-        btn_frame.pack(fill=tk.X)
-        ttk.Button(btn_frame, text="OK", command=self._on_ok).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(btn_frame, text="Cancel", command=self.dialog.destroy).pack(side=tk.RIGHT)
+        button_box = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        button_box.accepted.connect(self._on_ok)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
         
         # Center dialog
-        self.dialog.geometry("+%d+%d" % (
-            parent.winfo_rootx() + parent.winfo_width()//3,
-            parent.winfo_rooty() + parent.winfo_height()//3
-        ))
-        
-        # Make dialog modal
-        self.entry.focus_set()
-        self.dialog.wait_window()
-        
+        self.setGeometry(
+            parent.x() + parent.width()//3,
+            parent.y() + parent.height()//3,
+            300,
+            150
+        )
+    
     def _on_ok(self):
         """Save the edited value"""
-        self.result = self.entry.get()
-        self.dialog.destroy()
+        self.result = self.entry.text()
+        self.accept()

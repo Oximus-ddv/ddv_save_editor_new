@@ -31,6 +31,26 @@ class SaveFileService:
         self.current_save_data: Optional[SaveData] = None
         self.is_encrypted: bool = False
         self.decryption_key: Optional[bytes] = None
+
+    def reparse_from_json(self, json_data: Dict[str, Any]):
+        """Re-parse save data from a raw JSON dictionary (e.g. from Full Editor)"""
+        if not json_data:
+            return
+            
+        try:
+            # Parse the new data
+            new_save_data = self._parse_save_data(json_data)
+            
+            # Update current save data
+            self.current_save_data = new_save_data
+            
+            logger.info("Successfully re-parsed save data from JSON")
+            return self.current_save_data
+            
+        except Exception as e:
+            logger.error(f"Error re-parsing save data: {e}")
+            # Don't raise, just log, so we don't crash the UI if parsing fails on a partial edit
+            return None
     
     def detect_save_file(self) -> Optional[Path]:
         """Auto-detect DDV save file location"""
@@ -170,12 +190,23 @@ class SaveFileService:
                         # If all encodings fail, use utf-8 with error handling
                         json_data = data.decode('utf-8', errors='replace')
             
-            # Parse JSON
-            save_dict = json.loads(json_data)
+            # Parse JSON with detailed error handling
+            try:
+                save_dict = json.loads(json_data)
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON parsing error: {str(e)}")
+                # Try to provide more helpful error messages
+                if "Expecting property name enclosed in double quotes" in str(e):
+                    return False, "Save file appears to be corrupted. Try restoring from a backup or using the working copy you mentioned."
+                return False, f"Failed to parse save file: {str(e)}"
             
             # Convert to SaveData model
-            self.current_save_data = self._parse_save_data(save_dict)
-            self.current_save_path = file_path
+            try:
+                self.current_save_data = self._parse_save_data(save_dict)
+                self.current_save_path = file_path
+            except Exception as e:
+                logger.error(f"Error parsing save data: {str(e)}")
+                return False, f"Failed to parse save data structure: {str(e)}"
             
             if decryption_key:
                 self.decryption_key = self._hex_to_bytes(decryption_key)
@@ -284,8 +315,19 @@ class SaveFileService:
             # Convert SaveData back to dictionary
             save_dict = self._save_data_to_dict(self.current_save_data)
             
-            # Convert to JSON
-            json_data = json.dumps(save_dict, separators=(',', ':'))  # Compact format
+            # Convert to JSON with proper string key handling
+            def convert_keys_to_str(obj):
+                if isinstance(obj, dict):
+                    return {str(key): convert_keys_to_str(value) for key, value in obj.items()}
+                elif isinstance(obj, list):
+                    return [convert_keys_to_str(element) for element in obj]
+                return obj
+            
+            # Ensure all dictionary keys are strings
+            save_dict = convert_keys_to_str(save_dict)
+            
+            # Convert to JSON with ensure_ascii=False to handle non-ASCII characters
+            json_data = json.dumps(save_dict, separators=(',', ':'), ensure_ascii=False)  # Compact format
             
             if self.is_encrypted and self.decryption_key:
                 # Compress and encrypt
@@ -406,26 +448,65 @@ class SaveFileService:
         player_data = save_dict.get('Player', {})
         game_info = save_dict.get('GameInfo', {})
         
+        # Ensure Tools array is preserved
+        if 'Tools' not in player_data:
+            player_data['Tools'] = []
+        
         # Parse currencies
         currencies = player_data.get('CurrencyAmounts', {})
         
-        # Parse inventory items
+        # Parse inventory items from ContainerInventories (Backpack and Storage)
         inventory_items = []
-        inventories = player_data.get('ListInventories', {})
-        for inv_id, inventory in inventories.items():
-            inv_data = inventory.get('Inventory', {})
-            for item_id_str, item_data in inv_data.items():
+        container_inventories = player_data.get('ContainerInventories', {})
+        for inv_id, container in container_inventories.items():
+            inventory_list = container.get('Inventory', [])
+            for item_data in inventory_list:
                 try:
-                    item_id = int(item_id_str)
+                    item_id = int(item_data.get('ItemID', 0))
+                    if item_id == 0:  # Skip empty slots
+                        continue
+                        
                     amount = item_data.get('Amount', 1)
                     state = item_data.get('State')
+                    marker = item_data.get('Marker')
                     
-                    inventory_items.append(PlayerInventoryItem(
+                    inventory_item = PlayerInventoryItem(
                         item_id=item_id,
                         amount=amount,
                         state=state,
-                        inventory_id=str(inv_id)
-                    ))
+                        marker=marker,
+                        inventory_id=str(inv_id),
+                        source_type="container",
+                        raw_data=item_data # Capture all fields
+                    )
+                    inventory_items.append(inventory_item)
+                except (ValueError, TypeError):
+                    continue
+
+        # Parse inventory items from ListInventories (Furniture, Clothes, Houses, etc.)
+        list_inventories = player_data.get('ListInventories', {})
+        for inv_id, container in list_inventories.items():
+            inventory_dict = container.get('Inventory', {})
+            # List inventory is a dictionary mapping ItemID string to item data
+            for item_id_str, item_data in inventory_dict.items():
+                try:
+                    item_id = int(item_id_str)
+                    if item_id == 0:
+                        continue
+
+                    # ListInventories items use 'Amount' and usually have a 'Marker'
+                    amount = item_data.get('Amount', 1)
+                    marker = item_data.get('Marker')
+
+                    inventory_item = PlayerInventoryItem(
+                        item_id=item_id,
+                        amount=amount,
+                        marker=marker,
+                        inventory_id=str(inv_id),
+                        source_type="list",
+                        raw_data=item_data # Capture all fields
+                    )
+                    inventory_items.append(inventory_item)
                 except (ValueError, TypeError):
                     continue
         
@@ -440,7 +521,12 @@ class SaveFileService:
                     custom_name=pet_data.get('CustomName'),
                     friendship_level=pet_data.get('FriendshipLevel'),
                     xp=pet_data.get('XP', pet_data.get('FriendshipXP')),
-                    is_following=pet_data.get('IsFollowing', False)
+                    is_following=pet_data.get('IsFollowing', False),
+                    last_selfie_date=pet_data.get('LastSelfieDate'),
+                    last_petted_date=pet_data.get('LastPettedDate'),
+                    granted_inventory_slots=pet_data.get('GrantedInventorySlots', 0),
+                    pending_hangout_rewards=pet_data.get('PendingHangoutRewards', []),
+                    raw_data=pet_data # Capture all fields
                 ))
         
         return SaveData(
@@ -451,6 +537,8 @@ class SaveFileService:
             daisy_coins=int(currencies.get('80000009', 0)),
             mist=int(currencies.get('80000003', 0)),
             pixel_dust=int(currencies.get('80200002', 0)),
+            story_book_magic=int(currencies.get('80000010', 0)),
+            moonstones=int(currencies.get('80100000', 0)),
             inventory_items=inventory_items,
             pets=pets,
             game_version=game_info.get('Version', ''),
@@ -463,8 +551,15 @@ class SaveFileService:
         # Start with original save data if available
         if 'original_save' in save_data.custom_data:
             save_dict = save_data.custom_data['original_save'].copy()
+            
+            # Ensure Tools array is preserved from original save
+            if 'Player' in save_dict and 'Tools' in save_dict['Player']:
+                original_tools = save_dict['Player']['Tools']
+            else:
+                original_tools = []
         else:
             save_dict = {}
+            original_tools = []
         
         # Update player data
         player_data = save_dict.setdefault('Player', {})
@@ -478,11 +573,28 @@ class SaveFileService:
         currencies['80000009'] = save_data.daisy_coins
         currencies['80000003'] = save_data.mist
         currencies['80200002'] = save_data.pixel_dust
+        currencies['80000010'] = save_data.story_book_magic
+        currencies['80100000'] = save_data.moonstones
+        
+        # Ensure critical unmodeled player fields are preserved if they somehow got lost
+        # (Though starting with original_save should have them already)
+        if 'original_save' in save_data.custom_data:
+            original_player = save_data.custom_data['original_save'].get('Player', {})
+            for field in ['Xp', 'NextContainerInventoryID', 'NextListInventoryID', 'NextClothingDesignID']:
+                if field in original_player and field not in player_data:
+                    player_data[field] = original_player[field]
+                elif field in original_player:
+                    # Explicitly ensure we don't overwrite with 0 or smaller values if not intended
+                    # For now, just ensure they exist. The model doesn't touch them.
+                    pass
         
         # Update pets
         pets_list = []
         for pet in save_data.pets:
-            pet_dict = {'PetItemID': pet.pet_item_id}
+            # Start with original pet data if available to preserve unmodeled fields
+            pet_dict = pet.raw_data.copy() if pet.raw_data else {}
+            pet_dict['PetItemID'] = pet.pet_item_id
+            
             # Preserve legacy Name if present; prefer CustomName when available
             if pet.custom_name:
                 pet_dict['CustomName'] = pet.custom_name
@@ -491,43 +603,115 @@ class SaveFileService:
             if pet.friendship_level is not None:
                 pet_dict['FriendshipLevel'] = pet.friendship_level
             if pet.xp is not None:
-                pet_dict['XP'] = pet.xp
+                # Update whichever field was present (XP or FriendshipXp)
+                if 'FriendshipXp' in pet_dict:
+                    pet_dict['FriendshipXp'] = pet.xp
+                if 'XP' in pet_dict or 'FriendshipXp' not in pet_dict:
+                    pet_dict['XP'] = pet.xp
             if pet.is_following:
                 pet_dict['IsFollowing'] = pet.is_following
+            if pet.last_selfie_date is not None:
+                pet_dict['LastSelfieDate'] = pet.last_selfie_date
+            if pet.last_petted_date is not None:
+                pet_dict['LastPettedDate'] = pet.last_petted_date
+            if pet.granted_inventory_slots is not None:
+                pet_dict['GrantedInventorySlots'] = pet.granted_inventory_slots
+            if pet.pending_hangout_rewards is not None:
+                pet_dict['PendingHangoutRewards'] = pet.pending_hangout_rewards
             pets_list.append(pet_dict)
 
         player_data['Pets'] = pets_list
         
-        # Rebuild inventories from scratch to avoid stale entries
-        # Preserve any non-Inventory metadata that might exist on each bucket
-        original_inventories: Dict[str, Any] = player_data.get('ListInventories', {}) or {}
-        player_data['ListInventories'] = {}
-        inventories: Dict[str, Any] = player_data['ListInventories']
+        # Update ContainerInventories
+        # We need to preserve the structure (Size, ID, etc.) of existing containers
+        original_containers = player_data.get('ContainerInventories', {})
+        
+        # Group items by their inventory_id
+        inventory_groups: Dict[str, List[PlayerInventoryItem]] = {}
+        for item in save_data.inventory_items:
+            if item.source_type == "container":
+                inv_id = str(item.inventory_id or '0') # Default to backpack '0'
+                if inv_id not in inventory_groups:
+                    inventory_groups[inv_id] = []
+                inventory_groups[inv_id].append(item)
+            
+        # Rebuild each container
+        new_containers = original_containers.copy()
+        for inv_id, items in inventory_groups.items():
+            # Important: Use existing container as base to preserve metadata (ParentItemID, BelongsToPlayer, etc.)
+            original_container = new_containers.get(inv_id, {})
+            container = original_container.copy()
+            
+            if not container:
+                # Create new container if it doesn't exist (basic structure)
+                container = {'ID': int(inv_id) if inv_id.isdigit() else 0, 'Size': len(items) + 10, 'Inventory': []}
+            
+            # Update the inventory list
+            new_inv_list = []
+            for item in items:
+                # Start with original item data if available
+                item_data = item.raw_data.copy() if item.raw_data else {}
+                item_data.update({'ItemID': item.item_id, 'Amount': item.amount})
+                
+                if item.state is not None:
+                    item_data['State'] = item.state
+                elif 'State' not in item_data and item.item_id != 0:
+                    item_data['State'] = None # Explicit null for state often required
+                
+                if item.marker:
+                    item_data['Marker'] = item.marker
+                
+                new_inv_list.append(item_data)
+                
+            # Fill remaining slots with empty items if we want to preserve size?
+            target_size = container.get('Size', len(new_inv_list))
+            
+            # Fill the rest with empty items
+            while len(new_inv_list) < target_size:
+                new_inv_list.append({'ItemID': 0, 'Amount': 0, 'State': None})
+                
+            container['Inventory'] = new_inv_list
+            new_containers[inv_id] = container
+            
+        player_data['ContainerInventories'] = new_containers
 
-        # Group inventory items by their original inventory_id when available
-        # Fallback to '1' if not specified
-        for inv_item in save_data.inventory_items:
-            group_id = inv_item.inventory_id or '1'
-            inv_bucket = inventories.setdefault(group_id, {})
-            # Copy over non-Inventory fields from the original bucket once
-            if '__metadata_copied__' not in inv_bucket:
-                original_bucket = original_inventories.get(group_id, {}) or {}
-                for key, value in original_bucket.items():
-                    if key != 'Inventory' and key not in inv_bucket:
-                        inv_bucket[key] = value
-                # Mark to avoid re-copy attempts
-                inv_bucket['__metadata_copied__'] = True
+        # Update ListInventories
+        # Rebuild each list inventory from items grouped by inv_id where source_type is 'list'
+        original_list_inventories = player_data.get('ListInventories', {})
+        new_list_inventories = original_list_inventories.copy()
 
-            group = inv_bucket.setdefault('Inventory', {})
-            item_dict = {'Amount': inv_item.amount}
-            if inv_item.state:
-                item_dict['State'] = inv_item.state
-            group[str(inv_item.item_id)] = item_dict
+        # Group list items
+        list_groups: Dict[str, List[PlayerInventoryItem]] = {}
+        for item in save_data.inventory_items:
+            if item.source_type == "list":
+                inv_id = str(item.inventory_id or '0')
+                if inv_id not in list_groups:
+                    list_groups[inv_id] = []
+                list_groups[inv_id].append(item)
 
-        # Clean internal flags
-        for bucket in inventories.values():
-            if isinstance(bucket, dict) and '__metadata_copied__' in bucket:
-                bucket.pop('__metadata_copied__', None)
+        for inv_id, items in list_groups.items():
+            container = new_list_inventories.get(inv_id, {}).copy()
+            if not container:
+                # Basic structure for new list container
+                container = {'ID': int(inv_id) if inv_id.isdigit() else 0, 'Inventory': {}}
+            
+            # Rebuild the inventory dictionary
+            new_inv_dict = {}
+            for item in items:
+                # Start with original item data if available
+                item_data = item.raw_data.copy() if item.raw_data else {}
+                item_data['Amount'] = item.amount
+                
+                if item.marker:
+                    item_data['Marker'] = item.marker
+                elif 'Marker' not in item_data:
+                    item_data['Marker'] = "ItemMarker_None"
+                new_inv_dict[str(item.item_id)] = item_data
+            
+            container['Inventory'] = new_inv_dict
+            new_list_inventories[inv_id] = container
+
+        player_data['ListInventories'] = new_list_inventories
         
         # Update game info
         game_info = save_dict.setdefault('GameInfo', {})

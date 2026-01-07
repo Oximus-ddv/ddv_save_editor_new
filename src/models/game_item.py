@@ -32,26 +32,44 @@ class ItemCategory(str, Enum):
     FOOD = "food"  # ID: 33
     MATERIALS = "materials"  # ID: 34
     
+    # New categories
+    MOTIFS = "motifs"  # ID: 10
+    GLIDERS = "gliders"  # ID: 70
+    MAKEUP = "makeup"  # ID: 140
+    TRIMMING = "trimming"  # ID: 16
+    ACTIVITY = "activity"  # ID: 110
+    SCRAMBLECOIN = "scramblecoin"  # ID: 180
+    AVATAR_FEATURES = "avatar_features"  # ID: 70
+    PHOTO_MODE = "photo_mode"  # ID: 190
+    
     def get_id(self) -> int:
         """Get the numeric ID for this category"""
         category_ids = {
             "pets": 1,
-            "clothes_outfits": 1,
-            "clothes_tops": 1,
-            "clothes_bottoms": 1,
-            "clothes_helmets": 1,
-            "clothes_shoes": 1,
-            "clothes_accessories": 1,
-            "clothes_other": 1,
-            "house_skins": 5,
-            "house_wallpaper": 2,
-            "house_floors": 2,
-            "npc_houses": 5,
-            "npc_skins": 7,
+            "clothes_outfits": 10,
+            "clothes_tops": 11,
+            "clothes_bottoms": 12,
+            "clothes_helmets": 13,
+            "clothes_shoes": 14,
+            "clothes_accessories": 15,
+            "clothes_other": 16,
+            "house_skins": 20,
+            "house_wallpaper": 21,
+            "house_floors": 22,
+            "npc_houses": 23,
+            "npc_skins": 30,
             "furniture": 31,
             "tools": 32,
             "food": 33,
-            "materials": 34
+            "materials": 34,
+            "motifs": 6,
+            "gliders": 70,
+            "makeup": 3,
+            "trimming": 4,
+            "activity": 2,
+            "scramblecoin": 8,
+            "avatar_features": 9,
+            "photo_mode": 5
         }
         return category_ids[self.value]
     
@@ -75,7 +93,15 @@ class ItemCategory(str, Enum):
             31: cls.FURNITURE,
             32: cls.TOOLS,
             33: cls.FOOD,
-            34: cls.MATERIALS
+            34: cls.MATERIALS,
+            2: cls.ACTIVITY,
+            3: cls.MAKEUP,
+            4: cls.TRIMMING,
+            5: cls.PHOTO_MODE,
+            6: cls.MOTIFS,
+            8: cls.SCRAMBLECOIN,
+            9: cls.AVATAR_FEATURES,
+            70: cls.GLIDERS
         }
         return id_to_category.get(id)
 
@@ -85,6 +111,8 @@ class GameItem(BaseModel):
     id: int = Field(..., description="Unique item ID")
     name: str = Field(..., description="Display name of the item")
     category: ItemCategory = Field(..., description="Item category")
+    sub_category: Optional[str] = Field(None, description="Item sub-category (e.g. from Dict comments)")
+    is_quest: bool = Field(False, description="Whether this is a quest item")
     description: Optional[str] = Field(None, description="Item description")
     image_path: Optional[str] = Field(None, description="Path to item image")
     rarity: Optional[str] = Field(None, description="Item rarity")
@@ -116,8 +144,11 @@ class PlayerInventoryItem(BaseModel):
     """Represents an item in player's inventory"""
     item_id: int = Field(..., description="Reference to GameItem.id")
     amount: int = Field(1, description="Quantity of the item")
-    state: Optional[str] = Field(None, description="Item state (for some special items)")
+    state: Optional[Any] = Field(None, description="Item state (for some special items)")
     inventory_id: Optional[str] = Field(None, description="Original inventory/group identifier where this item belongs")
+    marker: Optional[str] = Field(None, description="Marker for items in ListInventories (e.g. ItemMarker_None)")
+    source_type: str = Field("container", description="Source type: 'container' or 'list'")
+    raw_data: Dict[str, Any] = Field(default_factory=dict, description="Original raw data to preserve unmodeled fields")
 
     @validator('amount')
     def validate_amount(cls, v):
@@ -134,6 +165,11 @@ class PetData(BaseModel):
     friendship_level: Optional[int] = Field(None, description="Friendship level")
     xp: Optional[int] = Field(None, description="Friendship XP")
     is_following: bool = Field(False, description="Is pet currently following player")
+    last_selfie_date: Optional[str] = Field(None, description="Last selfie date")
+    last_petted_date: Optional[str] = Field(None, description="Last petted date")
+    granted_inventory_slots: int = Field(0, description="Number of inventory slots granted by this pet")
+    pending_hangout_rewards: List[Any] = Field(default_factory=list, description="Pending hangout rewards")
+    raw_data: Dict[str, Any] = Field(default_factory=dict, description="Original raw data to preserve unmodeled fields")
 
 
 class SaveData(BaseModel):
@@ -147,6 +183,8 @@ class SaveData(BaseModel):
     daisy_coins: int = Field(0, description="Daisy Coins currency")
     mist: int = Field(0, description="Mist currency")
     pixel_dust: int = Field(0, description="Pixel Dust currency")
+    story_book_magic: int = Field(0, description="StoryBook Magic currency")
+    moonstones: int = Field(0, description="Moonstones currency")
     
     # Inventories
     inventory_items: List[PlayerInventoryItem] = Field(default_factory=list)

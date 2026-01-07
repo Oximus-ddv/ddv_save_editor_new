@@ -53,9 +53,7 @@ class InventoryType(Enum):
         patterns = {
             # Furniture items (inventory 0)
             "40": "0",   # Furniture
-            "20": "0",   # More furniture items
             "400": "0",  # More specific furniture items
-            "200": "0",  # More specific furniture items
             
             # Clothes (inventory 1)
             "50": "1",   # Clothes
@@ -70,7 +68,9 @@ class InventoryType(Enum):
             "16": "4",   # Wallpapers and Floors
             
             # Houses (inventory 5)
-            "20": "5",   # Houses
+            "2000": "5", # Villager Houses
+            "2050": "5", # House Dreamstyles
+            "20":   "5", # General Houses fallback
             
             # Touch of Magic (inventory 6)
             "100": "6",  # Touch of Magic decorations

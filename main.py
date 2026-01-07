@@ -31,33 +31,43 @@ def main():
         # Setup logging
         setup_logging()
         logger = logging.getLogger(__name__)
-        logger.info("Starting DDV Save Editor - Python Version")
+        logger.info("Starting DDV Save Editor - PyQt6 Version")
         
-        # Create and run the main window
-        app = MainWindow()
-        app.run()
+        # Create QApplication instance
+        from PyQt6.QtWidgets import QApplication
+        import qdarktheme
+        
+        app = QApplication(sys.argv)
+        
+        # Enable HiDPI (not needed for Qt6, but kept for documentation)
+        # qdarktheme.enable_hi_dpi()
+        
+        # Create and show the main window
+        window = MainWindow()
+        window.run()
+        
+        # Start the event loop
+        result = app.exec()
         
         logger.info("Application closed successfully")
+        return result
         
     except Exception as e:
         logging.error(f"Fatal error: {e}", exc_info=True)
         
         # Show error dialog if GUI is available
         try:
-            import tkinter as tk
-            from tkinter import messagebox
-            
-            root = tk.Tk()
-            root.withdraw()  # Hide main window
-            messagebox.showerror(
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.critical(
+                None,
                 "Fatal Error",
                 f"An unexpected error occurred:\n\n{e}\n\nCheck ddv_editor.log for details."
             )
         except:
             print(f"Fatal error: {e}")
         
-        sys.exit(1)
+        return 1
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

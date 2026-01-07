@@ -43,6 +43,7 @@ class ImageService:
         self.online_cache_dir: Path = Path("img_online")
         self.online_cache_zip: Path = Path("img_online.zip")
         self._zip_file_online: Optional[zipfile.ZipFile] = None
+        self.img_cache_dir = Path("img_cache")
         
         # Default image sizes
         self.thumbnail_size = (64, 64)
@@ -51,38 +52,19 @@ class ImageService:
         self._initialize()
     
     def _initialize(self):
-        """Initialize image sources and scan available images"""
+        """Initialize image sources and scan available images (img_cache only)"""
         try:
-            # Try to open ZIP file
-            if self.zip_path.exists():
-                self._zip_file = zipfile.ZipFile(self.zip_path, 'r')
-                self._scan_zip_images()
-                logger.info(f"Opened image ZIP: {self.zip_path}")
+            # Clear available images
+            self._available_images.clear()
             
-            # Scan folder images
-            if self.folder_path.exists():
-                self._scan_folder_images()
-                logger.info(f"Scanned image folder: {self.folder_path}")
-            # Open and scan online cache
-            if self.online_cache_zip.exists():
-                try:
-                    self._zip_file_online = zipfile.ZipFile(self.online_cache_zip, 'r')
-                    for file_info in self._zip_file_online.filelist:
-                        if not file_info.is_dir() and self._is_image_file(file_info.filename):
-                            self._available_images.add(file_info.filename.replace('\\', '/'))
-                    logger.info(f"Opened online cache ZIP: {self.online_cache_zip}")
-                except Exception as e:
-                    logger.warning(f"Failed to open online cache ZIP: {e}")
-            if self.online_cache_dir.exists():
-                for image_file in self.online_cache_dir.rglob("*"):
+            # ONLY scan local extraction cache (from Excel)
+            if self.img_cache_dir.exists():
+                for image_file in self.img_cache_dir.iterdir():
                     if image_file.is_file() and self._is_image_file(image_file.name):
-                        try:
-                            rel = image_file.relative_to(self.online_cache_dir)
-                        except Exception:
-                            continue
-                        self._available_images.add(str(rel).replace('\\', '/'))
-            
-            logger.info(f"Found {len(self._available_images)} available images")
+                        self._available_images.add(image_file.name)
+                logger.info(f"Scanned {len(self._available_images)} images in img_cache")
+            else:
+                logger.warning(f"Image cache directory not found: {self.img_cache_dir}")
             
         except Exception as e:
             logger.error(f"Error initializing image service: {e}")
@@ -134,6 +116,7 @@ class ImageService:
         
         # Generate possible image paths
         possible_paths = self._generate_image_paths(item_id, category)
+        logger.info(f"Checking paths for {item_id}: {possible_paths}")
         
         # Try to find and load image
         for path in possible_paths:
@@ -143,6 +126,7 @@ class ImageService:
                     return self._get_photo_image(path, image)
                 return image
         
+        logger.warning(f"Image not found in img_cache for ID {item_id}. Returning placeholder.")
         # Return placeholder if no image found
         placeholder = self._create_placeholder_image(size, str(item_id))
         if for_tkinter:
@@ -290,36 +274,24 @@ class ImageService:
         return paths
     
     def _load_image(self, image_path: str, size: Tuple[int, int]) -> Optional[Image.Image]:
-        """Load an image from ZIP or file system"""
+        """Load an image from img_cache ONLY"""
         # Check cache first
         cache_key = f"{image_path}_{size[0]}x{size[1]}"
         if cache_key in self._image_cache:
             return self._image_cache[cache_key]
         
+        # Extract just the filename (in case path has category/prefix)
+        filename = Path(image_path).name
+        
+        # Check availability
+        if filename not in self._available_images:
+            return None
+            
         try:
-            image = None
-            
-            # Try ZIP file first
-            if self._zip_file and image_path in self._available_images:
-                with self._zip_file.open(image_path) as img_file:
-                    image = Image.open(img_file)
-                    image.load()  # Ensure image is fully loaded
-            elif self._zip_file_online and image_path in self._available_images:
-                with self._zip_file_online.open(image_path) as img_file:
-                    image = Image.open(img_file)
-                    image.load()
-            
-            # Try file system
-            elif image_path in self._available_images:
-                file_path = self.folder_path / image_path
-                if file_path.exists():
-                    image = Image.open(file_path)
-                else:
-                    oc_path = self.online_cache_dir / image_path
-                    if oc_path.exists():
-                        image = Image.open(oc_path)
-            
-            if image:
+            ic_path = self.img_cache_dir / filename
+            if ic_path.exists():
+                image = Image.open(ic_path)
+                
                 # Resize if needed
                 if image.size != size:
                     image = image.resize(size, Image.Resampling.LANCZOS)
@@ -328,10 +300,12 @@ class ImageService:
                 if len(self._image_cache) < self.cache_size_limit:
                     self._image_cache[cache_key] = image.copy()
                 
+                logger.info(f"Successfully loaded {filename} from img_cache")
                 return image
-            
+            else:
+                logger.warning(f"Image {filename} found in index but missing from disk at {ic_path}")
         except Exception as e:
-            logger.debug(f"Could not load image {image_path}: {e}")
+            logger.error(f"Failed to load image {filename} from img_cache: {e}")
         
         return None
     

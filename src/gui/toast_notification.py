@@ -1,15 +1,18 @@
 """
 Toast notification widget for DDV Save Editor
 """
-import tkinter as tk
-from tkinter import ttk
 import time
 import logging
 from typing import List, Optional
 
+from PyQt6.QtWidgets import QWidget, QLabel, QVBoxLayout, QFrame
+from PyQt6.QtCore import Qt, QTimer, QPoint, QPropertyAnimation, QEasingCurve
+from PyQt6.QtGui import QColor
+
 logger = logging.getLogger(__name__)
 
-class ToastNotification:
+
+class ToastNotification(QWidget):
     """Displays a toast notification in the bottom-right corner of the screen"""
     
     # Class-level list to track active toasts
@@ -17,24 +20,21 @@ class ToastNotification:
     toast_height = 45  # Height of each toast
     toast_width = 300  # Width of each toast
     toast_padding = 10  # Padding between toasts
-    animation_ms = 16  # Animation step duration (roughly 60fps)
-    fade_step = 0.05  # Alpha change per step (slower fade)
+    animation_duration = 250  # Animation duration in milliseconds
     
-    def __init__(self, parent: tk.Tk, message: str, duration: float = 3.0):
+    def __init__(self, parent: QWidget, message: str, duration: float = 3.0):
         """
         Create a new toast notification
         
         Args:
-            parent: The root window
+            parent: The parent widget
             message: Message to display
             duration: How long to show the toast in seconds
         """
-        self.parent = parent
+        super().__init__(parent)
         self.message = message
         self.duration = duration
-        self.window: Optional[tk.Toplevel] = None
-        self.start_time = 0
-        self.alpha = 0.0
+        self.start_time = time.time()
         
         # Remove expired toasts
         now = time.time()
@@ -46,96 +46,90 @@ class ToastNotification:
         # Add this toast
         ToastNotification.active_toasts.append(self)
         
-        # Create and show the toast
-        self._create_window()
+        # Setup UI
+        self._setup_ui()
+        
+        # Show the toast
+        self.show()
         self._animate_in()
+    
+    def _setup_ui(self):
+        """Setup the toast window"""
+        # Set window flags
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         
-    def _create_window(self):
-        """Create the toast window"""
-        self.window = tk.Toplevel(self.parent)
-        self.window.overrideredirect(True)
+        # Create layout
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(2, 2, 2, 2)
         
-        # Make it float above other windows
-        self.window.lift()
-        self.window.attributes('-topmost', True)
+        # Create frame
+        frame = QFrame(self)
+        frame.setStyleSheet("""
+            QFrame {
+                background-color: #2d2d2d;
+                border-radius: 4px;
+            }
+        """)
+        frame_layout = QVBoxLayout(frame)
+        frame_layout.setContentsMargins(10, 8, 10, 8)
         
-        # Start fully transparent
-        self.window.attributes('-alpha', 0.0)
+        # Create label
+        label = QLabel(self.message, frame)
+        label.setStyleSheet("""
+            QLabel {
+                color: #ffffff;
+                font-family: 'Segoe UI';
+                font-size: 10pt;
+            }
+        """)
+        label.setWordWrap(True)
+        frame_layout.addWidget(label)
         
-        # Style for a modern look
-        self.window.configure(bg='#2d2d2d')
+        layout.addWidget(frame)
         
-        # Frame with padding and rounded appearance
-        frame = tk.Frame(self.window, bg='#2d2d2d')
-        frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-        
-        # Message label
-        label = tk.Label(
-            frame, 
-            text=self.message,
-            wraplength=self.toast_width - 20,
-            justify=tk.LEFT,
-            bg='#2d2d2d',
-            fg='#ffffff',
-            font=('Segoe UI', 10)
-        )
-        label.pack(padx=10, pady=8)
-        
-        # Size and position
-        self.window.update_idletasks()
-        width = self.toast_width
-        height = self.toast_height
+        # Set size
+        self.setFixedSize(self.toast_width, self.toast_height)
         
         # Position at bottom right, stacked with other active toasts
-        screen_width = self.parent.winfo_screenwidth()
-        screen_height = self.parent.winfo_screenheight()
-        
-        # Calculate position based on number of active toasts
+        screen_geometry = self.screen().geometry()
         toast_index = len(ToastNotification.active_toasts) - 1
-        x = screen_width - width - 20
-        y = screen_height - (height + self.toast_padding) * (toast_index + 1) - 40
+        x = screen_geometry.width() - self.toast_width - 20
+        y = screen_geometry.height() - (self.toast_height + self.toast_padding) * (toast_index + 1) - 40
+        self.move(x, y)
         
-        self.window.geometry(f"{width}x{height}+{x}+{y}")
-        
-        # Start tracking time
-        self.start_time = time.time()
+        # Set initial opacity
+        self.setWindowOpacity(0.0)
     
     def _animate_in(self):
         """Fade in the toast"""
-        if not self.window:
-            return
-            
-        self.alpha = min(1.0, self.alpha + self.fade_step)
-        self.window.attributes('-alpha', self.alpha)
-        
-        if self.alpha < 1.0:
-            self.window.after(self.animation_ms, self._animate_in)
-        else:
-            # Start fade out timer
-            self.window.after(int(self.duration * 1000), self._animate_out)
+        self.fade_in = QPropertyAnimation(self, b"windowOpacity")
+        self.fade_in.setDuration(self.animation_duration)
+        self.fade_in.setStartValue(0.0)
+        self.fade_in.setEndValue(1.0)
+        self.fade_in.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.fade_in.finished.connect(self._schedule_fade_out)
+        self.fade_in.start()
+    
+    def _schedule_fade_out(self):
+        """Schedule the fade out animation"""
+        QTimer.singleShot(int(self.duration * 1000), self._animate_out)
     
     def _animate_out(self):
         """Fade out the toast"""
-        if not self.window:
-            return
-            
-        self.alpha = max(0.0, self.alpha - self.fade_step)
-        self.window.attributes('-alpha', self.alpha)
-        
-        if self.alpha > 0.0:
-            self.window.after(self.animation_ms, self._animate_out)
-        else:
-            self.destroy()
+        self.fade_out = QPropertyAnimation(self, b"windowOpacity")
+        self.fade_out.setDuration(self.animation_duration)
+        self.fade_out.setStartValue(1.0)
+        self.fade_out.setEndValue(0.0)
+        self.fade_out.setEasingCurve(QEasingCurve.Type.InCubic)
+        self.fade_out.finished.connect(self.close)
+        self.fade_out.start()
     
-    def destroy(self):
-        """Clean up the toast window"""
-        if self.window:
-            try:
-                self.window.destroy()
-                self.window = None
-            except Exception:
-                pass
+    def closeEvent(self, event):
+        """Handle widget close event"""
         try:
             ToastNotification.active_toasts.remove(self)
         except ValueError:
             pass
+        super().closeEvent(event)

@@ -42,6 +42,13 @@ def main():
         "--hidden-import", "PIL",       # Ensure PIL is included
         "--hidden-import", "pandas",    # Ensure pandas is included
         "--hidden-import", "openpyxl",  # Ensure openpyxl is included
+        
+        # ---------------------------------------------------------
+        # 👇 FIX ADDED HERE: Force exclude conflicting Qt bindings
+        "--exclude-module", "PyQt5",
+        "--exclude-module", "PySide6",
+        # ---------------------------------------------------------
+
         "main.py"
     ]
     

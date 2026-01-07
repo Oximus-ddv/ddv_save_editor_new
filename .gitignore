@@ -61,4 +61,7 @@ profile.json
 download.json
 
 # Excel temp files
-~$*.xlsx
+*.xlsx
+
+# Exe files
+*.exe
