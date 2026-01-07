@@ -11,6 +11,7 @@ from datetime import datetime
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 import hashlib
+from decouple import config
 
 from ..models.game_item import SaveData, PlayerInventoryItem, PetData
 
@@ -134,13 +135,23 @@ class SaveFileService:
             logger.info(f"File encryption status: {'Encrypted' if self.is_encrypted else 'Plain text'}")
             
             if self.is_encrypted:
-                if not decryption_key:
-                    logger.error("Decryption key required but not provided")
-                    return False, "Decryption key required for encrypted save file"
+                keys_to_try = []
+                if decryption_key:
+                    keys_to_try.append(decryption_key)
+                env_key = config('DECRYPTION_KEY', default=None)
+                if env_key:
+                    keys_to_try.append(env_key)
+                keys_to_try.append('62357168683873614a38556c444a557a545a5864325467366d626f3857386e35')
+
+                decrypted_data = None
+                for key in keys_to_try:
+                    logger.info("Attempting to decrypt save file with a new key...")
+                    decrypted_data = self._decrypt_save_file(file_path, key)
+                    if decrypted_data:
+                        self.decryption_key = self._hex_to_bytes(key)
+                        logger.info("Decryption successful!")
+                        break
                 
-                logger.info("Attempting to decrypt save file...")
-                # Decrypt the file
-                decrypted_data = self._decrypt_save_file(file_path, decryption_key)
                 if not decrypted_data:
                     logger.error("Decryption failed - invalid key or corrupted file")
                     return False, "Failed to decrypt save file (invalid key?)"

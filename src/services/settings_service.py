@@ -35,6 +35,9 @@ class SettingsService:
             "thumbnail_size": "64x64",
             "preview_size": "128x128",
             "theme": "light",
+            "dict_version": "0.0.0",
+            "data_source": "Dict",
+            "dict_root": "Dict",
             # Default DDV key (hex, space-separated groups supported)
             "hex_key": "62 35 71 68 68 38 73 61 4A 38 55 6C 44 4A 55 7A 54 5A 58 64 32 54 67 36 6D 62 6F 38 57 38 6E 35",
         }
