@@ -99,10 +99,13 @@ class DictDataService:
 
             with zipfile.ZipFile(self.zip_path, 'r') as zf:
                 # 1. Load categorized folders first
-                json_files = sorted(zf.namelist())
+                all_files = sorted(zf.namelist())
+                
+                # Normalize paths by stripping the leading "Dict/" directory if present
+                normalized_files = [f.removeprefix("Dict/") for f in all_files if f.startswith("Dict/")]
                 
                 # Filter for JSON files
-                json_files = [f for f in json_files if f.endswith(".json")]
+                json_files = [f for f in normalized_files if f.endswith(".json")]
                 
                 # Prioritize subdirectories over root files
                 folder_files = [f for f in json_files if '/' in f]
@@ -115,7 +118,7 @@ class DictDataService:
                     category = self._map_dir_to_category(dir_name)
                     
                     try:
-                        with zf.open(name) as f:
+                        with zf.open(f"Dict/{name}") as f: # Re-add prefix for reading
                             text = f.read().decode('utf-8', errors='ignore')
                             
                             # Handle furniture sub-categories specially
@@ -128,7 +131,7 @@ class DictDataService:
                 # 2. Process root files (like allknowids.json) last as fallback
                 for name in root_files:
                     try:
-                        with zf.open(name) as f:
+                        with zf.open(f"Dict/{name}") as f: # Re-add prefix for reading
                             text = f.read().decode('utf-8', errors='ignore')
                             items, _ = self._read_id_name_map_with_metadata(text)
                             # Passing None as category triggers prefix-based guessing

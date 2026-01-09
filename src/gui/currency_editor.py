@@ -21,11 +21,12 @@ logger = logging.getLogger(__name__)
 class CurrencyEditorFrame(QWidget):
     """Frame for editing game currencies"""
     
-    def __init__(self, parent, save_service: SaveFileService):
+    def __init__(self, parent, save_service: SaveFileService, danger_zone_enabled: bool = False):
         super().__init__(parent)
         
         self.save_service = save_service
         self.save_data: Optional[SaveData] = None
+        self._danger_zone_enabled = danger_zone_enabled
         
         # Currency variables
         self.star_coins_spinbox = QSpinBox()
@@ -39,6 +40,9 @@ class CurrencyEditorFrame(QWidget):
         # Player info variables
         self.player_name_edit = QLineEdit()
         self.player_level_spinbox = QSpinBox()
+
+        # Widgets to hide in danger zone
+        self.moonstone_widgets = []
         
         self.setup_ui()
     
@@ -55,7 +59,16 @@ class CurrencyEditorFrame(QWidget):
         
         # Action buttons
         self.setup_action_buttons(main_layout)
+
+        # Set initial visibility
+        self.set_danger_zone_mode(self._danger_zone_enabled)
     
+    def set_danger_zone_mode(self, enabled: bool):
+        """Show or hide widgets based on danger zone mode."""
+        self._danger_zone_enabled = enabled
+        for widget in self.moonstone_widgets:
+            widget.setVisible(enabled)
+
     def setup_player_info_section(self, parent_layout):
         """Setup player information section"""
         player_group = QGroupBox("Player Information")
@@ -77,7 +90,7 @@ class CurrencyEditorFrame(QWidget):
     def setup_currencies_section(self, parent_layout):
         """Setup currencies section"""
         currency_group = QGroupBox("Currencies")
-        currency_layout = QGridLayout(currency_group)
+        self.currency_layout = QGridLayout(currency_group)
         
         # Currency definitions
         currencies = [
@@ -87,32 +100,58 @@ class CurrencyEditorFrame(QWidget):
             ("Mist:", self.mist_spinbox, "Mystical realm currency"),
             ("Pixel Dust:", self.pixel_dust_spinbox, "Digital realm currency"),
             ("StoryBook Magic:", self.story_book_magic_spinbox, "Currency for Storybook content"),
-            ("Moonstones:", self.moonstones_spinbox, "Premium currency (WARNING: May not work)"),
         ]
+
+        moonstone_currency = ("Moonstones:", self.moonstones_spinbox, "Premium currency (WARNING: May not work)")
         
         # Create currency editors
         for i, (label_text, spinbox, tooltip) in enumerate(currencies):
             # Label
             label = QLabel(label_text)
             label.setToolTip(tooltip)
-            currency_layout.addWidget(label, i, 0)
+            self.currency_layout.addWidget(label, i, 0)
             
             # SpinBox
             spinbox.setRange(0, 2147483647)
             spinbox.setMinimumWidth(150)
-            currency_layout.addWidget(spinbox, i, 1)
+            self.currency_layout.addWidget(spinbox, i, 1)
             
             # Max button
             max_btn = QPushButton("Max")
             max_btn.setMaximumWidth(60)
             max_btn.clicked.connect(lambda checked, sb=spinbox: self.set_max_currency(sb))
-            currency_layout.addWidget(max_btn, i, 2)
+            self.currency_layout.addWidget(max_btn, i, 2)
             
             # Reset button
             reset_btn = QPushButton("Reset")
             reset_btn.setMaximumWidth(60)
             reset_btn.clicked.connect(lambda checked, sb=spinbox: sb.setValue(0))
-            currency_layout.addWidget(reset_btn, i, 3)
+            self.currency_layout.addWidget(reset_btn, i, 3)
+
+        # Create Moonstone editor separately to manage visibility
+        i = len(currencies)
+        label = QLabel(moonstone_currency[0])
+        label.setToolTip(moonstone_currency[2])
+        self.currency_layout.addWidget(label, i, 0)
+        self.moonstone_widgets.append(label)
+
+        spinbox = moonstone_currency[1]
+        spinbox.setRange(0, 2147483647)
+        spinbox.setMinimumWidth(150)
+        self.currency_layout.addWidget(spinbox, i, 1)
+        self.moonstone_widgets.append(spinbox)
+
+        max_btn = QPushButton("Max")
+        max_btn.setMaximumWidth(60)
+        max_btn.clicked.connect(lambda checked, sb=spinbox: self.set_max_currency(sb))
+        self.currency_layout.addWidget(max_btn, i, 2)
+        self.moonstone_widgets.append(max_btn)
+
+        reset_btn = QPushButton("Reset")
+        reset_btn.setMaximumWidth(60)
+        reset_btn.clicked.connect(lambda checked, sb=spinbox: sb.setValue(0))
+        self.currency_layout.addWidget(reset_btn, i, 3)
+        self.moonstone_widgets.append(reset_btn)
         
         parent_layout.addWidget(currency_group)
     

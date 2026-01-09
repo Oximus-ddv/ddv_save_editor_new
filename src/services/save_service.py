@@ -448,6 +448,9 @@ class SaveFileService:
         player_data = save_dict.get('Player', {})
         game_info = save_dict.get('GameInfo', {})
         
+        # Parse collection sets
+        collection_sets = player_data.get('CollectionSets', {})
+        
         # Ensure Tools array is preserved
         if 'Tools' not in player_data:
             player_data['Tools'] = []
@@ -541,6 +544,7 @@ class SaveFileService:
             moonstones=int(currencies.get('80100000', 0)),
             inventory_items=inventory_items,
             pets=pets,
+            collection_sets=collection_sets,
             game_version=game_info.get('Version', ''),
             save_version=str(save_dict.get('Version', '')),
             custom_data={'original_save': save_dict}  # Keep original for reference
@@ -565,6 +569,7 @@ class SaveFileService:
         player_data = save_dict.setdefault('Player', {})
         player_data['Name'] = save_data.player_name
         player_data['Level'] = save_data.player_level
+        player_data['CollectionSets'] = save_data.collection_sets
         
         # Update currencies
         currencies = player_data.setdefault('CurrencyAmounts', {})

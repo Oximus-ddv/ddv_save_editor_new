@@ -189,6 +189,7 @@ class SaveData(BaseModel):
     # Inventories
     inventory_items: List[PlayerInventoryItem] = Field(default_factory=list)
     pets: List[PetData] = Field(default_factory=list)
+    collection_sets: List[Dict[str, Any]] = Field(default_factory=list, description="Collection sets data")
     
     # Game info
     game_version: Optional[str] = Field(None, description="Game version")

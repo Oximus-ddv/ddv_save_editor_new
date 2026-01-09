@@ -39,6 +39,7 @@ class SettingsDialog(QDialog):
         self.dict_root = str(self._initial.get("dict_root", "Dict"))
         self.thumbnail_size = self._initial.get("thumbnail_size", "64x64")
         self.preview_size = self._initial.get("preview_size", "128x128")
+        self.danger_zone_enabled = bool(self._initial.get("danger_zone_enabled", False))
         
         # Default DDV hex key (from settings or environment override if packaged)
         default_hex = os.environ.get(
@@ -61,6 +62,7 @@ class SettingsDialog(QDialog):
         self.thumbnail_size_combo = None
         self.preview_size_combo = None
         self.hex_key_edit = None
+        self.danger_zone_check = None
         
         self.setup_ui()
     
@@ -78,9 +80,32 @@ class SettingsDialog(QDialog):
         self.setup_image_settings_tab(tab_widget)
         self.setup_backup_settings_tab(tab_widget)
         self.setup_encryption_tab(tab_widget)
+        self.setup_danger_zone_tab(tab_widget)
         
         # Add buttons
         self.setup_buttons(layout)
+
+    def setup_danger_zone_tab(self, tab_widget):
+        """Setup danger zone settings tab"""
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        layout.setContentsMargins(10, 10, 10, 10)
+        
+        danger_group = QGroupBox("⚠️ Danger Zone")
+        danger_layout = QVBoxLayout(danger_group)
+        
+        self.danger_zone_check = QCheckBox("Enable Danger Zone features (currency editing, etc.)")
+        self.danger_zone_check.setChecked(self.danger_zone_enabled)
+        danger_layout.addWidget(self.danger_zone_check)
+        
+        info_label = QLabel("Enabling this will show advanced features that can corrupt your save file if used incorrectly. Use with caution.")
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #FFC107;")
+        danger_layout.addWidget(info_label)
+        
+        layout.addWidget(danger_group)
+        layout.addStretch()
+        tab_widget.addTab(tab, "Danger Zone")
     
     def setup_file_paths_tab(self, tab_widget):
         """Setup file paths configuration tab"""
@@ -428,4 +453,5 @@ class SettingsDialog(QDialog):
             'hex_key': self.hex_key_edit.text(),
             'data_source': "dict" if self.data_source_dict_radio.isChecked() else "excel",
             'dict_root': self.dict_root_edit.text(),
+            'danger_zone_enabled': self.danger_zone_check.isChecked(),
         }

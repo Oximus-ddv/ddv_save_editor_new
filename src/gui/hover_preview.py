@@ -162,15 +162,18 @@ class HoverPreviewBehavior(QObject):
             item_id = data.pet_item_id
             category = ItemCategory.PETS
         
-        # If ID is not found in data, try column 0 text
+        # If ID is not found in data, try column 0 text, then column 1
         if not item_id:
             try:
                 item_id = int(item.text(0))
-            except:
-                pass
+            except (ValueError, TypeError):
+                try:
+                    item_id = int(item.text(1))
+                except (ValueError, TypeError):
+                    pass
         
         # If category not found, try Resolver
-        if not category and self.category_resolver:
+        if not category and self.category_resolver and item_id:
             category = self.category_resolver(item_id, item)
             
         return item_id, category

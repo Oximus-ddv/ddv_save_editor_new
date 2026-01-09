@@ -29,6 +29,8 @@ from ..services.augmentation_service import augment_save_dict, add_basic_tools, 
 from ..models.game_item import GameDatabase, ItemCategory
 from .item_editor import ItemEditorFrame
 from .currency_editor import CurrencyEditorFrame
+from .collection_editor import CollectionEditorFrame
+from .collection_set_editor import CollectionSetEditorFrame
 from .settings_dialog import SettingsDialog
 from .search_results import SearchResultsFrame
 from .json_viewer import JsonViewerWindow
@@ -238,80 +240,84 @@ class MainWindow(QMainWindow):
             # Add custom styles for better readability
             stylesheet += """
             * {
-                font-size: 10pt;
-                font-family: 'Segoe UI', sans-serif;
+                font-size: 11pt;
+                font-family: 'Inter', sans-serif;
             }
             QMainWindow {
-                padding: 5px;
+                background-color: #1a1a1a;
             }
-            QPushButton {
-                padding: 6px 12px;
-                font-weight: bold;
+            QWidget {
+                color: #e0e0e0;
             }
             QTabWidget::pane {
-                border: 1px solid palette(mid);
-                border-radius: 6px;
+                border: none;
+                border-radius: 0px;
             }
             QTabBar::tab {
-                padding: 8px 16px;
-                min-width: 80px;
-                background-color: #333;
-                color: #BBB;
-                border: 1px solid #444;
-                border-bottom: none;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                margin-right: 2px;
+                padding: 10px 20px;
+                min-width: 100px;
+                background-color: #1a1a1a;
+                color: #a0a0a0;
+                border: none;
+                border-bottom: 2px solid #1a1a1a;
             }
             QTabBar::tab:selected {
-                background-color: #555;
-                color: white;
-                font-weight: bold;
-                border-bottom: 2px solid #D0BCFF;
+                background-color: #1a1a1a;
+                color: #ffffff;
+                border-bottom: 2px solid #007bff;
             }
             QTabBar::tab:hover {
-                background-color: #444;
-                color: white;
+                background-color: #2a2a2a;
+                color: #ffffff;
             }
             QTreeView {
-                border: 1px solid palette(mid);
-                border-radius: 6px;
-                padding: 4px;
-                alternate-background-color: palette(alternate-base);
+                border: none;
+                background-color: #2a2a2a;
+                alternate-background-color: #303030;
             }
             QHeaderView::section {
-                padding: 6px;
+                padding: 10px;
                 font-weight: bold;
-                background-color: #444;
-                color: white;
-                border: 1px solid #555;
+                background-color: #1a1a1a;
+                color: #e0e0e0;
+                border: none;
             }
             QLineEdit, QSpinBox, QComboBox {
-                padding: 5px;
+                padding: 8px;
                 border-radius: 4px;
-                min-height: 22px;
-                background-color: #444;
-                color: white;
-                border: 1px solid #666;
+                background-color: #2a2a2a;
+                color: #e0e0e0;
+                border: 1px solid #444;
             }
             QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
-                border: 1px solid #888;
-                background-color: #505050;
+                border: 1px solid #007bff;
+                background-color: #303030;
+            }
+            QPushButton {
+                padding: 10px 20px;
+                font-weight: bold;
+                background-color: #007bff;
+                color: #ffffff;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
             }
             QLabel {
-                padding: 2px;
+                padding: 4px;
             }
             QGroupBox {
-                margin-top: 1.5em;
+                margin-top: 1em;
                 font-weight: bold;
-                border: 1px solid palette(mid);
+                border: 1px solid #444;
                 border-radius: 6px;
+                padding-top: 10px;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 5px;
-                left: 10px;
+                subcontrol-position: top center;
+                padding: 0 10px;
             }
             """
             QApplication.instance().setStyleSheet(stylesheet)
@@ -335,92 +341,91 @@ class MainWindow(QMainWindow):
         self.settings_service.save(self.settings)
         
         # Apply the new theme
-        stylesheet = qdarktheme.load_stylesheet(
-            theme=theme,
-            custom_colors={
-                "primary": "#D0BCFF" if theme == "dark" else "#6750A4",
-            }
-        )
+        stylesheet = qdarktheme.load_stylesheet(theme=theme)
         
         # Add custom styles for better readability (re-apply)
         stylesheet += """
-            * {
-                font-size: 10pt;
-                font-family: 'Segoe UI', sans-serif;
-            }
-            QMainWindow {
-                padding: 5px;
-            }
-            QPushButton {
-                padding: 6px 12px;
-                font-weight: bold;
-            }
-            QTabWidget::pane {
-                border: 1px solid palette(mid);
-                border-radius: 6px;
-            }
-            QTabBar::tab {
-                padding: 8px 16px;
-                min-width: 80px;
-                background-color: #333;
-                color: #BBB;
-                border: 1px solid #444;
-                border-bottom: none;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-                margin-right: 2px;
-            }
-            QTabBar::tab:selected {
-                background-color: #555;
-                color: white;
-                font-weight: bold;
-                border-bottom: 2px solid #D0BCFF;
-            }
-            QTabBar::tab:hover {
-                background-color: #444;
-                color: white;
-            }
-            QTreeView {
-                border: 1px solid palette(mid);
-                border-radius: 6px;
-                padding: 4px;
-                alternate-background-color: palette(alternate-base);
-            }
-            QHeaderView::section {
-                padding: 6px;
-                font-weight: bold;
-                background-color: #444;
-                color: white;
-                border: 1px solid #555;
-            }
-            QLineEdit, QSpinBox, QComboBox {
-                padding: 5px;
-                border-radius: 4px;
-                min-height: 22px;
-                background-color: #444;
-                color: white;
-                border: 1px solid #666;
-            }
-            QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
-                border: 1px solid #888;
-                background-color: #505050;
-            }
-            QLabel {
-                padding: 2px;
-            }
-            QGroupBox {
-                margin-top: 1.5em;
-                font-weight: bold;
-                border: 1px solid palette(mid);
-                border-radius: 6px;
-            }
-            QGroupBox::title {
-                subcontrol-origin: margin;
-                subcontrol-position: top left;
-                padding: 0 5px;
-                left: 10px;
-            }
-            """
+        * {
+            font-size: 11pt;
+            font-family: 'Inter', sans-serif;
+        }
+        QMainWindow {
+            background-color: #1a1a1a;
+        }
+        QWidget {
+            color: #e0e0e0;
+        }
+        QTabWidget::pane {
+            border: none;
+            border-radius: 0px;
+        }
+        QTabBar::tab {
+            padding: 10px 20px;
+            min-width: 100px;
+            background-color: #1a1a1a;
+            color: #a0a0a0;
+            border: none;
+            border-bottom: 2px solid #1a1a1a;
+        }
+        QTabBar::tab:selected {
+            background-color: #1a1a1a;
+            color: #ffffff;
+            border-bottom: 2px solid #007bff;
+        }
+        QTabBar::tab:hover {
+            background-color: #2a2a2a;
+            color: #ffffff;
+        }
+        QTreeView {
+            border: none;
+            background-color: #2a2a2a;
+            alternate-background-color: #303030;
+        }
+        QHeaderView::section {
+            padding: 10px;
+            font-weight: bold;
+            background-color: #1a1a1a;
+            color: #e0e0e0;
+            border: none;
+        }
+        QLineEdit, QSpinBox, QComboBox {
+            padding: 8px;
+            border-radius: 4px;
+            background-color: #2a2a2a;
+            color: #e0e0e0;
+            border: 1px solid #444;
+        }
+        QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
+            border: 1px solid #007bff;
+            background-color: #303030;
+        }
+        QPushButton {
+            padding: 10px 20px;
+            font-weight: bold;
+            background-color: #007bff;
+            color: #ffffff;
+            border: none;
+            border-radius: 4px;
+        }
+        QPushButton:hover {
+            background-color: #0056b3;
+        }
+        QLabel {
+            padding: 4px;
+        }
+        QGroupBox {
+            margin-top: 1em;
+            font-weight: bold;
+            border: 1px solid #444;
+            border-radius: 6px;
+            padding-top: 10px;
+        }
+        QGroupBox::title {
+            subcontrol-origin: margin;
+            subcontrol-position: top center;
+            padding: 0 10px;
+        }
+        """
             
         QApplication.instance().setStyleSheet(stylesheet)
         
@@ -442,15 +447,21 @@ class MainWindow(QMainWindow):
         # Notebook for tabs
         self.notebook = QTabWidget()
         self.main_layout.addWidget(self.notebook)
-        
-        # Currency editor tab
-        self.currency_frame = CurrencyEditorFrame(self.notebook, self.save_service)
+
+        # These frames are always present
+        danger_zone_enabled = self.settings.get('danger_zone_enabled', False)
+        self.currency_frame = CurrencyEditorFrame(self.notebook, self.save_service, danger_zone_enabled)
         self.notebook.addTab(self.currency_frame, "Currencies")
+
+        self.collection_frame = CollectionEditorFrame(self.notebook, self.save_service, self.game_database)
+        self.notebook.addTab(self.collection_frame, "Collections")
+
+        self.collection_set_frame = CollectionSetEditorFrame(self.notebook, self.save_service, self.dict_service, self.image_service)
+        self.notebook.addTab(self.collection_set_frame, "Collection Sets")
         
-        # Battle Pass editor tab
-        self.battle_pass_frame = BattlePassEditor(self.notebook)
-        self.notebook.addTab(self.battle_pass_frame, "Battle Pass")
-        
+        # Conditionally add other danger zone tabs
+        self._update_danger_zone_tabs()
+
         # Item editor tabs (will be created dynamically)
         self.item_editor_frames: Dict[ItemCategory, ItemEditorFrame] = {}
         # Map top-level group container widgets to their nested notebooks
@@ -612,6 +623,11 @@ class MainWindow(QMainWindow):
     def on_data_loaded(self):
         """Called when Excel data is loaded"""
         if self.game_database and len(self.game_database.get_all_categories()) > 0:
+            # Update frames that depend on game_database
+            self.collection_frame.game_database = self.game_database
+            if hasattr(self, 'collection_set_frame'):
+                self.collection_set_frame.game_database = self.game_database
+
             self.create_category_tabs()
             self.update_database_stats()
             self.set_status("Excel data loaded successfully")
@@ -1195,11 +1211,17 @@ class MainWindow(QMainWindow):
             self.status_indicator.setStyleSheet("color: green")
             self.status_label.setText("Save loaded")
             
-            # Update currency editor
-            self.currency_frame.load_save_data(self.save_service.current_save_data)
+            # Update danger zone frames only if they exist
+            if hasattr(self, 'currency_frame'):
+                self.currency_frame.load_save_data(self.save_service.current_save_data)
+            if hasattr(self, 'battle_pass_frame'):
+                self.battle_pass_frame.setData(self.save_service.current_save_data.custom_data.get('original_save', {}))
+
+            # Update collection editor
+            self.collection_frame.load_save_data(self.save_service.current_save_data)
             
-            # Update battle pass editor
-            self.battle_pass_frame.setData(self.save_service.current_save_data.custom_data.get('original_save', {}))
+            # Update collection set editor
+            self.collection_set_frame.load_save_data(self.save_service.current_save_data)
             
             # Update item editors
             for frame in self.item_editor_frames.values():
@@ -1227,24 +1249,23 @@ class MainWindow(QMainWindow):
         
         def save_data():
             try:
-                # Update save data from editors
-                self.currency_frame.update_save_data()
+                # Update save data from editors, only if they exist
+                if hasattr(self, 'currency_frame'):
+                    self.currency_frame.update_save_data()
                 
-                # Update battle pass data
-                battle_pass_data = self.battle_pass_frame.getData()
-                if battle_pass_data:
-                    save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
-                    # Targeted update to avoid wiping the entire Player dictionary
-                    player_data = save_dict.setdefault('Player', {})
-                    bp_states = player_data.setdefault('BattlePassStates', {})
-                    bp_progress = bp_states.setdefault('Progress', {})
-                    
-                    # Merge specific battle pass progress data
-                    new_progress = battle_pass_data.get('Player', {}).get('BattlePassStates', {}).get('Progress', {})
-                    if new_progress:
-                        bp_progress.update(new_progress)
-                    
-                    self.save_service.current_save_data.custom_data['original_save'] = save_dict
+                if hasattr(self, 'battle_pass_frame'):
+                    battle_pass_data = self.battle_pass_frame.getData()
+                    if battle_pass_data:
+                        save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
+                        player_data = save_dict.setdefault('Player', {})
+                        bp_states = player_data.setdefault('BattlePassStates', {})
+                        bp_progress = bp_states.setdefault('Progress', {})
+                        
+                        new_progress = battle_pass_data.get('Player', {}).get('BattlePassStates', {}).get('Progress', {})
+                        if new_progress:
+                            bp_progress.update(new_progress)
+                        
+                        self.save_service.current_save_data.custom_data['original_save'] = save_dict
                 
                 # Merge updates from either category tabs or Search tab per category
                 frames_by_category = dict(self.item_editor_frames)
@@ -1292,8 +1313,10 @@ class MainWindow(QMainWindow):
         
         def save_data():
             try:
-                # Update save data from editors
-                self.currency_frame.update_save_data()
+                # Update save data from editors, only if they exist
+                if hasattr(self, 'currency_frame'):
+                    self.currency_frame.update_save_data()
+
                 frames_by_category = dict(self.item_editor_frames)
                 try:
                     for i in range(self.notebook.count()):
@@ -1383,6 +1406,10 @@ class MainWindow(QMainWindow):
     def on_data_refreshed(self):
         """Called when Excel data refresh completes"""
         self.hide_progress()
+        if self.game_database:
+            self.collection_frame.game_database = self.game_database
+            if hasattr(self, 'collection_set_frame'):
+                self.collection_set_frame.game_database = self.game_database
         self.create_category_tabs()
         self.update_database_stats()
         self.set_status("Data loaded successfully")
@@ -1425,7 +1452,7 @@ class MainWindow(QMainWindow):
         # Create a new tab
         search_frame = SearchResultsFrame(self.notebook, results, self.image_service, self.save_service)
         total = sum(len(v) for v in results.values())
-        self.notebook.add(search_frame, text=f"Search ({total})")
+        self.notebook.addTab(search_frame, f"Search ({total})")
         self.notebook.setCurrentWidget(search_frame)
     
     def add_all_items(self):
@@ -1465,6 +1492,32 @@ class MainWindow(QMainWindow):
     def on_tab_changed(self, event):
         """Handle tab change"""
         pass  # Could be used for lazy loading or other optimizations
+
+    def _update_danger_zone_tabs(self):
+        """Add or remove danger zone tabs based on settings."""
+        danger_zone_enabled = self.settings.get('danger_zone_enabled', False)
+
+        # Update the currency frame's internal state
+        if hasattr(self, 'currency_frame'):
+            self.currency_frame.set_danger_zone_mode(danger_zone_enabled)
+
+        # Conditionally add/remove the Battle Pass tab
+        battle_pass_tab_exists = hasattr(self, 'battle_pass_frame') and self.notebook.indexOf(self.battle_pass_frame) != -1
+
+        if danger_zone_enabled and not battle_pass_tab_exists:
+            # Add the Battle Pass tab
+            self.battle_pass_frame = BattlePassEditor(self.notebook)
+            # Insert it after the Currencies tab
+            self.notebook.insertTab(1, self.battle_pass_frame, "Battle Pass")
+            
+            if self.save_service.current_save_data:
+                self.battle_pass_frame.setData(self.save_service.current_save_data.custom_data.get('original_save', {}))
+
+        elif not danger_zone_enabled and battle_pass_tab_exists:
+            # Remove the Battle Pass tab
+            self.notebook.removeTab(self.notebook.indexOf(self.battle_pass_frame))
+            del self.battle_pass_frame
+
     
     def show_settings(self):
         """Show settings dialog"""
@@ -1510,6 +1563,9 @@ class MainWindow(QMainWindow):
             # Decryption key
             if 'hex_key' in self.settings:
                 self.default_hex_key = str(self.settings['hex_key'])
+
+            # Update UI based on new settings
+            self._update_danger_zone_tabs()
     
     def show_backup_manager(self):
         """Show backup manager dialog"""

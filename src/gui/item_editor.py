@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QMenu, QMessageBox, QInputDialog, QHeaderView
 )
 from PyQt6.QtCore import Qt, pyqtSlot, QSize, pyqtSignal
-from PyQt6.QtGui import QAction, QIcon
+from PyQt6.QtGui import QAction, QIcon, QColor
 
 from ..models.game_item import ItemCategory, ItemCollection, SaveData, PlayerInventoryItem, GameItem
 from ..services.image_service import ImageService
@@ -20,6 +20,15 @@ from .pet_editor_dialog import PetEditorDialog
 from .hover_preview import HoverPreviewBehavior
 
 logger = logging.getLogger(__name__)
+
+
+class CustomQTreeWidgetItem(QTreeWidgetItem):
+    def __lt__(self, other):
+        column = self.treeWidget().sortColumn()
+        try:
+            return int(self.text(column)) < int(other.text(column))
+        except ValueError:
+            return self.text(column) < other.text(column)
 
 
 class ItemEditorFrame(QWidget):
@@ -67,6 +76,8 @@ class ItemEditorFrame(QWidget):
         self.dict_tree.setHeaderLabels(["ID", "Name"])
         self.dict_tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.dict_tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.dict_tree.setSortingEnabled(True)
+        self.dict_tree.header().sectionClicked.connect(lambda col: self._sort_tree(self.dict_tree, col))
         # Enable multi-selection
         from PyQt6.QtWidgets import QAbstractItemView
         self.dict_tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -99,6 +110,8 @@ class ItemEditorFrame(QWidget):
         # Enable multi-selection
         self.inv_tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.inv_tree.itemDoubleClicked.connect(self.edit_inventory_amount)
+        self.inv_tree.setSortingEnabled(True)
+        self.inv_tree.header().sectionClicked.connect(lambda col: self._sort_tree(self.inv_tree, col))
         right_layout.addWidget(self.inv_tree)
         
         # Action Buttons
@@ -125,7 +138,7 @@ class ItemEditorFrame(QWidget):
         splitter.setSizes([400, 400])
         
         # Populate Dictionary
-        self.populate_dictionary()
+        self.populate_dictionary(set())
         
         # Setup Hover Previews
         self.dict_hover = HoverPreviewBehavior(self.dict_tree, self.image_service, 
@@ -133,29 +146,45 @@ class ItemEditorFrame(QWidget):
         self.inv_hover = HoverPreviewBehavior(self.inv_tree, self.image_service, 
                                               lambda id, item: self.category)
 
-    def populate_dictionary(self):
+    def _sort_tree(self, tree: QTreeWidget, column: int):
+        """Sort the tree widget by the given column, handling groups."""
+        order = tree.header().sortIndicatorOrder()
+        
+        # Sort top-level items
+        tree.sortItems(column, order)
+        
+        # Now, sort children of each top-level group
+        for i in range(tree.topLevelItemCount()):
+            parent = tree.topLevelItem(i)
+            if parent and parent.childCount() > 0:
+                parent.sortChildren(column, order)
+
+    def populate_dictionary(self, saved_item_ids: set):
         """Populate the dictionary tree with items from the collection, grouping by sub_category if available"""
         self.dict_tree.clear()
         
         # Dictionary to store group parents: {group_name: QTreeWidgetItem}
-        groups: Dict[str, QTreeWidgetItem] = {}
+        groups: Dict[str, CustomQTreeWidgetItem] = {}
         items_without_group = []
         
         # Sort items to preserve some order (e.g. by name)
         sorted_collection = sorted(list(self.collection), key=lambda x: x.name)
 
         for item in sorted_collection:
-            tree_item = QTreeWidgetItem()
+            tree_item = CustomQTreeWidgetItem()
             tree_item.setText(0, str(item.id))
             tree_item.setText(1, item.name)
             # Store full item object
             tree_item.setData(0, Qt.ItemDataRole.UserRole, item)
+
+            if item.id in saved_item_ids:
+                tree_item.setForeground(1, QColor("green"))
             
             # Grouping logic
             sub_cat = getattr(item, 'sub_category', None)
             if sub_cat:
                 if sub_cat not in groups:
-                    group_parent = QTreeWidgetItem(self.dict_tree)
+                    group_parent = CustomQTreeWidgetItem(self.dict_tree)
                     group_parent.setText(1, sub_cat)
                     # Make group bold
                     font = group_parent.font(1)
@@ -212,6 +241,9 @@ class ItemEditorFrame(QWidget):
     def load_save_data(self, save_data: SaveData):
         """Load save data into the right pane"""
         self.save_data = save_data
+        if self.save_data:
+            saved_item_ids = {item.item_id for item in self.save_data.inventory_items}
+            self.populate_dictionary(saved_item_ids)
         self.refresh_inventory_tree()
 
     def _is_pet_category(self):
@@ -255,11 +287,7 @@ class ItemEditorFrame(QWidget):
         for item in matched_items:
             self._add_inv_tree_item(item)
         
-        # Add category items that aren't in Dict as "Unknown"
-        for item in category_items:
-            self._add_inv_tree_item(item, show_as_unknown=True)
-        
-        logger.info(f"Category {self.category.name}: {len(matched_items)} matched, {len(category_items)} unknown items")
+        logger.info(f"Category {self.category.name}: {len(matched_items)} matched items")
 
     def _add_pet_tree_item(self, pet):
         """Helper to add a pet to the inventory tree"""
@@ -274,7 +302,7 @@ class ItemEditorFrame(QWidget):
                     name = f"{name} ({item.name})" # Show custom name + species
                 break
         
-        tree_item = QTreeWidgetItem(self.inv_tree)
+        tree_item = CustomQTreeWidgetItem(self.inv_tree)
         tree_item.setText(0, str(pet.pet_item_id))
         tree_item.setText(1, name)
         tree_item.setText(2, "1") # Pets are unique, amount 1
@@ -370,7 +398,7 @@ class ItemEditorFrame(QWidget):
         else:
             name = f"Unknown Item (ID: {inv_item.item_id})"
         
-        tree_item = QTreeWidgetItem(self.inv_tree)
+        tree_item = CustomQTreeWidgetItem(self.inv_tree)
         tree_item.setText(0, str(inv_item.item_id))
         
         display_name = name
@@ -379,6 +407,15 @@ class ItemEditorFrame(QWidget):
             
         tree_item.setText(1, display_name)
         tree_item.setText(2, str(inv_item.amount))
+        
+        # Store the PlayerInventoryItem object specifically for editing
+        tree_item.setData(0, Qt.ItemDataRole.UserRole, inv_item)
+        
+        # Store the PlayerInventoryItem object specifically for editing
+        tree_item.setData(0, Qt.ItemDataRole.UserRole, inv_item)
+        
+        # Store the PlayerInventoryItem object specifically for editing
+        tree_item.setData(0, Qt.ItemDataRole.UserRole, inv_item)
         
         # Store the PlayerInventoryItem object specifically for editing
         tree_item.setData(0, Qt.ItemDataRole.UserRole, inv_item)
@@ -602,7 +639,6 @@ class ItemEditorFrame(QWidget):
         dialog = PetEditorDialog(self, pet_data, game_item, self.image_service)
         if dialog.exec():
             # Refresh to show changes (e.g. name change)
-            self._add_pet_tree_item(pet_data) # This might duplicate if I don't clear or update current item
             # Better: just update text of current item
             name = pet_data.custom_name or "Unknown"
             if game_item:
