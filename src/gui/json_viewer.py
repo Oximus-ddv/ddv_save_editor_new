@@ -8,9 +8,11 @@ from typing import Optional, Dict, Any, Callable
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QTreeWidget, QTreeWidgetItem, QFrame,
-    QMessageBox, QDialogButtonBox, QWidget, QSpinBox, QHeaderView
+    QMessageBox, QDialogButtonBox, QWidget, QSpinBox, QHeaderView,
+    QStackedWidget, QApplication, QGraphicsOpacityEffect, QStackedLayout, QSizePolicy
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QElapsedTimer, QPropertyAnimation, QEasingCurve
+from PyQt6.QtGui import QPixmap, QColor
 
 from ..services.augmentation_service import add_item_to_save
 
@@ -102,12 +104,7 @@ class AddItemDialog(QDialog):
         layout.addWidget(button_box)
         
         # Center dialog
-        self.setGeometry(
-            parent.x() + parent.width()//3,
-            parent.y() + parent.height()//3,
-            300,
-            200
-        )
+
     
     def _on_ok(self):
         """Validate and save the new item"""
@@ -164,12 +161,7 @@ class EditValueDialog(QDialog):
         layout.addWidget(button_box)
         
         # Center dialog
-        self.setGeometry(
-            parent.x() + parent.width()//3,
-            parent.y() + parent.height()//3,
-            300,
-            150
-        )
+
     
     def _on_ok(self):
         """Validate and save the new value"""
@@ -205,11 +197,13 @@ class JsonViewerWindow(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("JSON Viewer")
-        self.resize(800, 600)
         
         # Make window modal
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         
+        self.loading_timer = QElapsedTimer()
+        self.tree_generator = None
+
         # Create main layout
         layout = QVBoxLayout(self)
         layout.setContentsMargins(5, 5, 5, 5)
@@ -238,9 +232,49 @@ class JsonViewerWindow(QDialog):
         collapse_btn.clicked.connect(self._collapse_all)
         toolbar.addWidget(collapse_btn)
         
-        # Create tree widget
+        # Create stacked widget for loading screen and tree view
+        self.stacked_widget = QStackedWidget()
+        layout.addWidget(self.stacked_widget)
+        
+        # --- Create loading widget ---
+        self.loading_widget = QWidget()
+        loading_layout = QVBoxLayout(self.loading_widget) # Use QVBoxLayout directly on loading_widget
+        
+        # Set background image via stylesheet
+        pixmap_path = "images/json_loading.png"
+        self.loading_widget.setStyleSheet(f"""
+            QWidget#loading_widget {{
+                background-image: url({pixmap_path});
+                background-repeat: no-repeat;
+                background-position: center;
+                background-size: cover; /* Scale to cover the entire widget */
+            }}
+        """)
+        self.loading_widget.setObjectName("loading_widget") # Set object name for stylesheet targeting
+
+        loading_layout.addStretch()
+        self.loading_status_label = QLabel("Initializing...")
+        self.loading_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.loading_status_label.setStyleSheet("font-size: 16pt; color: white; background-color: rgba(0,0,0,150); padding: 10px; border-radius: 5px;")
+        loading_layout.addWidget(self.loading_status_label)
+        loading_layout.addStretch()
+
+        self.stacked_widget.addWidget(self.loading_widget)
+
+        # Animation for the status label
+        self.opacity_effect = QGraphicsOpacityEffect(self.loading_status_label)
+        self.loading_status_label.setGraphicsEffect(self.opacity_effect)
+        self.animation = QPropertyAnimation(self.opacity_effect, b"opacity")
+        self.animation.setDuration(1000)
+        self.animation.setStartValue(1.0)
+        self.animation.setEndValue(0.3)
+        self.animation.setEasingCurve(QEasingCurve.Type.InOutQuad)
+        self.animation.setLoopCount(-1)
+        self.animation.setDirection(QPropertyAnimation.Direction.Forward)
+
+        # --- Create tree widget ---
         self.tree = JsonTreeWidget()
-        layout.addWidget(self.tree)
+        self.stacked_widget.addWidget(self.tree)
         
         # Connect signals
         self.tree.jsonModified.connect(self._on_json_modified)
@@ -249,80 +283,106 @@ class JsonViewerWindow(QDialog):
         self.on_modified_callback: Optional[Callable] = None
     
     def load_json(self, data: Dict[str, Any]):
-        """Load JSON data into the tree"""
-        # Clear existing items
+        """Starts the non-blocking process of loading JSON data into the tree."""
+        self.loading_status_label.setText("Preparing to load JSON data...")
+        self.stacked_widget.setCurrentWidget(self.loading_widget)
+        self.animation.start()
+        self.loading_timer.start()
+        
+        # Use a timer to allow the loading screen to show before starting the population
+        QTimer.singleShot(100, lambda: self._start_population(data))
+
+    def _start_population(self, data: Dict[str, Any]):
+        """Sets up the generator and starts the chunked processing."""
+        self.loading_status_label.setText("Building tree view...")
         self.tree.clear()
         
-        # Add root item
-        root = QTreeWidgetItem(["root", "", "dict"])
-        self.tree.addTopLevelItem(root)
+        root_item = QTreeWidgetItem(["root", "", "dict"])
+        self.tree.addTopLevelItem(root_item)
         
-        # Recursively add items
-        self._add_json_items(root, data)
-        
-        # Expand root
-        root.setExpanded(True)
-    
-    def _add_json_items(self, parent: QTreeWidgetItem, data: Any):
-        """Recursively add JSON items to the tree"""
-        if isinstance(data, dict):
-            for key, value in data.items():
-                item = QTreeWidgetItem([str(key), "", self._get_type_name(value)])
-                parent.addChild(item)
+        self.tree_generator = self._add_json_items_iterative(root_item, data)
+        self._process_next_chunk()
+
+    def _process_next_chunk(self):
+        """Processes one chunk of the JSON tree generator."""
+        try:
+            # Process a chunk of items until the generator yields
+            next(self.tree_generator)
+            # Schedule the next chunk, allowing the event loop to run
+            QTimer.singleShot(0, self._process_next_chunk)
+        except StopIteration:
+            # Finished
+            self._finish_population()
+
+    def _finish_population(self):
+        """Finalizes the UI after the tree is populated."""
+        self.tree.topLevelItem(0).setExpanded(True)
+        elapsed_time = self.loading_timer.elapsed()
+        logger.info(f"JSON tree populated in {elapsed_time} ms.")
+        self.animation.stop()
+        self.stacked_widget.setCurrentWidget(self.tree)
+
+    def _add_json_items_iterative(self, root_item, data):
+        """Iteratively and non-blockingly populates the tree using a generator."""
+        color_map = {
+            "string": QColor("#a3e9a4"), "number": QColor("#569cd6"),
+            "boolean": QColor("#ce9178"), "null": QColor("#c586c0"),
+        }
+        stack = [(root_item, data)]
+        nodes_processed = 0
+
+        while stack:
+            parent_item, current_data = stack.pop()
+            
+            items_to_add = []
+            if isinstance(current_data, dict):
+                items_to_add = reversed(list(current_data.items()))
+            elif isinstance(current_data, list):
+                items_to_add = reversed(list(enumerate(current_data)))
+
+            for key, value in items_to_add:
+                type_name = self._get_type_name(value)
+                item = QTreeWidgetItem([str(key), "", type_name])
+
+                if type_name in color_map:
+                    item.setForeground(1, color_map[type_name])
+                    item.setForeground(2, color_map[type_name])
+
+                parent_item.addChild(item)
+                
                 if isinstance(value, (dict, list)):
-                    self._add_json_items(item, value)
+                    stack.append((item, value))
                 else:
                     item.setText(1, str(value))
-        
-        elif isinstance(data, list):
-            for i, value in enumerate(data):
-                item = QTreeWidgetItem([str(i), "", self._get_type_name(value)])
-                parent.addChild(item)
-                if isinstance(value, (dict, list)):
-                    self._add_json_items(item, value)
-                else:
-                    item.setText(1, str(value))
+                
+                nodes_processed += 1
+                if nodes_processed % 200 == 0: # Yield every 200 nodes
+                    yield
     
     def _get_type_name(self, value: Any) -> str:
         """Get type name for a value"""
-        if isinstance(value, bool):
-            return "boolean"
-        elif isinstance(value, (int, float)):
-            return "number"
-        elif isinstance(value, str):
-            return "string"
-        elif isinstance(value, dict):
-            return "dict"
-        elif isinstance(value, list):
-            return "list"
-        elif value is None:
-            return "null"
-        else:
-            return type(value).__name__
+        if isinstance(value, bool): return "boolean"
+        elif isinstance(value, (int, float)): return "number"
+        elif isinstance(value, str): return "string"
+        elif isinstance(value, dict): return "dict"
+        elif isinstance(value, list): return "list"
+        elif value is None: return "null"
+        else: return type(value).__name__
     
     def _on_search(self, text: str):
         """Handle search text changes"""
         search_text = text.lower()
         
         def process_item(item: QTreeWidgetItem) -> bool:
-            # Check current item
-            item_matches = any(
-                search_text in item.text(col).lower()
-                for col in range(item.columnCount())
-            )
-            
-            # Check children
+            item_matches = any(search_text in item.text(col).lower() for col in range(item.columnCount()))
             child_matches = False
             for i in range(item.childCount()):
                 if process_item(item.child(i)):
                     child_matches = True
             
-            # Show/hide based on matches
             item.setHidden(not (item_matches or child_matches))
-            
             return item_matches or child_matches
         
-        # Process all top-level items
         for i in range(self.tree.topLevelItemCount()):
             process_item(self.tree.topLevelItem(i))
     
@@ -344,13 +404,11 @@ class JsonViewerWindow(QDialog):
         dialog = AddItemDialog(self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             try:
-                # Get the current save data as a dictionary
                 save_dict = self.get_json_data()
                 if not save_dict:
                     QMessageBox.critical(self, "Error", "Could not get current save data")
                     return
                 
-                # Add the item using the augmentation service
                 success = add_item_to_save(
                     save_dict,
                     item_id=dialog.result['item_id'],
@@ -359,14 +417,10 @@ class JsonViewerWindow(QDialog):
                 )
                 
                 if success:
-                    # Update the tree view with the new save data
                     self.load_json(save_dict)
-                    
-                    # Show success message
                     inventory_id = dialog.result['inventory_id'] or 'default'
                     QMessageBox.information(
-                        self,
-                        "Success",
+                        self, "Success",
                         f"Added item {dialog.result['item_id']} with amount {dialog.result['amount']} to inventory {inventory_id}"
                     )
                 else:
@@ -379,20 +433,15 @@ class JsonViewerWindow(QDialog):
     def get_json_data(self) -> Dict[str, Any]:
         """Convert the current tree view back to a JSON object"""
         def process_item(item: QTreeWidgetItem) -> Any:
-            type_name = item.text(2)  # Type is in column 2
-            
+            type_name = item.text(2)
             if type_name in ("dict", "list"):
                 children = [item.child(i) for i in range(item.childCount())]
                 if type_name == "dict":
-                    return {
-                        child.text(0): process_item(child)
-                        for child in children
-                    }
-                else:  # list
+                    return {child.text(0): process_item(child) for child in children}
+                else:
                     return [process_item(child) for child in children]
             else:
-                # Convert value based on type
-                value = item.text(1)  # Value is in column 1
+                value = item.text(1)
                 if type_name == "number":
                     return float(value) if "." in value else int(value)
                 elif type_name == "boolean":
@@ -402,6 +451,5 @@ class JsonViewerWindow(QDialog):
                 else:
                     return value
         
-        # Start with root's children (skip root itself)
         root = self.tree.topLevelItem(0)
         return process_item(root)

@@ -16,7 +16,7 @@ from PyQt6.QtWidgets import (
     QLineEdit, QTreeWidget, QTreeWidgetItem, QInputDialog, QHeaderView
 )
 from PyQt6.QtCore import Qt, QSize, QEvent, pyqtSignal, pyqtSlot, QTimer
-from PyQt6.QtGui import QAction, QPalette
+from PyQt6.QtGui import QAction, QPalette, QResizeEvent, QPixmap, QScreen
 import qdarktheme
 
 from ..services.excel_service import ExcelDataService
@@ -26,7 +26,7 @@ from ..services.save_service import SaveFileService
 from ..services.settings_service import SettingsService
 from ..services.dict_service import DictDataService
 from ..services.augmentation_service import augment_save_dict, add_basic_tools, add_specific_tool
-from ..models.game_item import GameDatabase, ItemCategory
+from ..models.game_item import GameDatabase, ItemCategory, PlayerInventoryItem
 from .item_editor import ItemEditorFrame
 from .currency_editor import CurrencyEditorFrame
 from .collection_editor import CollectionEditorFrame
@@ -51,29 +51,40 @@ class MainWindow(QMainWindow):
     status_signal = pyqtSignal(str)
 
     
-    def __init__(self):
+    def __init__(self, splash=None):
         super().__init__()
+        self.splash = splash
+
+        # Settings MUST be loaded first as other components depend on them.
+        self.settings_service = SettingsService()
+        self.settings: Dict[str, Any] = self.settings_service.load()
+        
+        # Cache for stylesheet to avoid reloading from disk
+        self._cached_base_stylesheet: Optional[str] = None
+        self._current_theme_for_cache: Optional[str] = None
+        
+        # Debounce timer for resize events
+        self.resize_timer = QTimer(self)
+        self.resize_timer.setSingleShot(True)
+        self.resize_timer.timeout.connect(self.update_stylesheet)
         
         # Setup window
         self.setWindowTitle("DDV Save Editor - PyQt6")
-        self.resize(1200, 800)
         
-        # Setup dark theme
+        # Setup dark theme now that settings are available
         self.setup_theme()
         
         # Create central widget and main layout
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.main_layout = QVBoxLayout(self.central_widget)
-        # Maximize by default to ensure full visibility on all screen sizes
-        self.showMaximized()
         
-        # Visual theme and scaling first
-        self.setup_theme()
-
-        # Settings
-        self.settings_service = SettingsService()
-        self.settings: Dict[str, Any] = self.settings_service.load()
+        # Set a reasonable default size and center the window
+        screen = QApplication.primaryScreen()
+        if screen:
+            available_geometry = screen.availableGeometry()
+            self.resize(int(available_geometry.width() * 0.8), int(available_geometry.height() * 0.8))
+            self.move(available_geometry.center() - self.rect().center())
 
         # Services configured from settings
         self.excel_service = ExcelDataService(self.settings.get('excel_path'))
@@ -227,210 +238,121 @@ class MainWindow(QMainWindow):
         help_menu.addAction(about_action)
 
     def setup_theme(self):
-        """Setup the application theme using qdarktheme"""
+        """Setup the application theme using qdarktheme."""
         try:
-            # Enable HiDPI - not needed for Qt6 as it's enabled by default
-            # qdarktheme.enable_hi_dpi()
+            theme_choice = self.settings.get('theme', 'dark')
+            self._apply_stylesheet(theme_choice) # Apply base CSS
+            self.update_stylesheet() # Apply initial font size
             
-            # Get theme preference from settings
-            theme_choice = str(getattr(self, 'settings', {}).get('theme', 'dark')).lower()
+            if not hasattr(self, 'theme_combo'):
+                self.theme_combo = QComboBox()
+                self.theme_combo.addItems(["Light", "Dark"])
+                self.theme_combo.setCurrentText(theme_choice.title())
+                self.theme_combo.currentTextChanged.connect(self.on_theme_changed)
+                
+        except Exception as e:
+            logger.error(f"Error setting up theme: {e}")
+            pass
+
+    def _apply_stylesheet(self, theme: str):
+        """Generates and applies the application stylesheet, with caching."""
+        # Load and cache the base stylesheet only when the theme changes
+        if theme != self._current_theme_for_cache or not self._cached_base_stylesheet:
+            base_stylesheet = qdarktheme.load_stylesheet(theme=theme)
             
-            # Setup theme with customizations
-            stylesheet = qdarktheme.load_stylesheet(theme=theme_choice)
-            # Add custom styles for better readability
-            stylesheet += """
-            * {
-                font-size: 11pt;
+            # Add custom styles for better readability (re-apply)
+            custom_stylesheet = f"""
+            * {{
                 font-family: 'Inter', sans-serif;
-            }
-            QMainWindow {
+            }}
+            QMainWindow {{
                 background-color: #1a1a1a;
-            }
-            QWidget {
+            }}
+            QWidget {{
                 color: #e0e0e0;
-            }
-            QTabWidget::pane {
+            }}
+            QTabWidget::pane {{
                 border: none;
                 border-radius: 0px;
-            }
-            QTabBar::tab {
+            }}
+            QTabBar::tab {{
                 padding: 10px 20px;
                 min-width: 100px;
                 background-color: #1a1a1a;
                 color: #a0a0a0;
                 border: none;
                 border-bottom: 2px solid #1a1a1a;
-            }
-            QTabBar::tab:selected {
+            }}
+            QTabBar::tab:selected {{
                 background-color: #1a1a1a;
                 color: #ffffff;
                 border-bottom: 2px solid #007bff;
-            }
-            QTabBar::tab:hover {
+            }}
+            QTabBar::tab:hover {{
                 background-color: #2a2a2a;
                 color: #ffffff;
-            }
-            QTreeView {
+            }}
+            QTreeView {{
                 border: none;
                 background-color: #2a2a2a;
                 alternate-background-color: #303030;
-            }
-            QHeaderView::section {
+            }}
+            QHeaderView::section {{
                 padding: 10px;
                 font-weight: bold;
                 background-color: #1a1a1a;
                 color: #e0e0e0;
                 border: none;
-            }
-            QLineEdit, QSpinBox, QComboBox {
+            }}
+            QLineEdit, QSpinBox, QComboBox {{
                 padding: 8px;
                 border-radius: 4px;
                 background-color: #2a2a2a;
                 color: #e0e0e0;
                 border: 1px solid #444;
-            }
-            QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
+            }}
+            QLineEdit:focus, QSpinBox:focus, QComboBox:focus {{
                 border: 1px solid #007bff;
                 background-color: #303030;
-            }
-            QPushButton {
+            }}
+            QPushButton {{
                 padding: 10px 20px;
                 font-weight: bold;
                 background-color: #007bff;
                 color: #ffffff;
                 border: none;
                 border-radius: 4px;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 background-color: #0056b3;
-            }
-            QLabel {
+            }}
+            QLabel {{
                 padding: 4px;
-            }
-            QGroupBox {
+            }}
+            QGroupBox {{
                 margin-top: 1em;
                 font-weight: bold;
                 border: 1px solid #444;
                 border-radius: 6px;
                 padding-top: 10px;
-            }
-            QGroupBox::title {
+            }}
+            QGroupBox::title {{
                 subcontrol-origin: margin;
                 subcontrol-position: top center;
                 padding: 0 10px;
-            }
+            }}
             """
-            QApplication.instance().setStyleSheet(stylesheet)
+            self._cached_base_stylesheet = base_stylesheet + custom_stylesheet
+            self._current_theme_for_cache = theme
             
-            # Add theme switcher to toolbar if not already added
-            if not hasattr(self, 'theme_combo'):
-                self.theme_combo = QComboBox()
-                self.theme_combo.addItems(["Light", "Dark"])
-                self.theme_combo.setCurrentText(theme_choice)
-                self.theme_combo.currentTextChanged.connect(self.on_theme_changed)
-                
-        except Exception as e:
-            logger.error(f"Error setting up theme: {e}")
-            # Fallback to system style if qdarktheme fails
-            pass
+        QApplication.instance().setStyleSheet(self._cached_base_stylesheet)
 
     def on_theme_changed(self, theme: str):
-        """Handle theme change from the combo box"""
+        """Handle theme change from the combo box, saves setting."""
         theme = theme.lower()
         self.settings['theme'] = theme
         self.settings_service.save(self.settings)
-        
-        # Apply the new theme
-        stylesheet = qdarktheme.load_stylesheet(theme=theme)
-        
-        # Add custom styles for better readability (re-apply)
-        stylesheet += """
-        * {
-            font-size: 11pt;
-            font-family: 'Inter', sans-serif;
-        }
-        QMainWindow {
-            background-color: #1a1a1a;
-        }
-        QWidget {
-            color: #e0e0e0;
-        }
-        QTabWidget::pane {
-            border: none;
-            border-radius: 0px;
-        }
-        QTabBar::tab {
-            padding: 10px 20px;
-            min-width: 100px;
-            background-color: #1a1a1a;
-            color: #a0a0a0;
-            border: none;
-            border-bottom: 2px solid #1a1a1a;
-        }
-        QTabBar::tab:selected {
-            background-color: #1a1a1a;
-            color: #ffffff;
-            border-bottom: 2px solid #007bff;
-        }
-        QTabBar::tab:hover {
-            background-color: #2a2a2a;
-            color: #ffffff;
-        }
-        QTreeView {
-            border: none;
-            background-color: #2a2a2a;
-            alternate-background-color: #303030;
-        }
-        QHeaderView::section {
-            padding: 10px;
-            font-weight: bold;
-            background-color: #1a1a1a;
-            color: #e0e0e0;
-            border: none;
-        }
-        QLineEdit, QSpinBox, QComboBox {
-            padding: 8px;
-            border-radius: 4px;
-            background-color: #2a2a2a;
-            color: #e0e0e0;
-            border: 1px solid #444;
-        }
-        QLineEdit:focus, QSpinBox:focus, QComboBox:focus {
-            border: 1px solid #007bff;
-            background-color: #303030;
-        }
-        QPushButton {
-            padding: 10px 20px;
-            font-weight: bold;
-            background-color: #007bff;
-            color: #ffffff;
-            border: none;
-            border-radius: 4px;
-        }
-        QPushButton:hover {
-            background-color: #0056b3;
-        }
-        QLabel {
-            padding: 4px;
-        }
-        QGroupBox {
-            margin-top: 1em;
-            font-weight: bold;
-            border: 1px solid #444;
-            border-radius: 6px;
-            padding-top: 10px;
-        }
-        QGroupBox::title {
-            subcontrol-origin: margin;
-            subcontrol-position: top center;
-            padding: 0 10px;
-        }
-        """
-            
-        QApplication.instance().setStyleSheet(stylesheet)
-        
-        # Update application style
-        QApplication.processEvents()
+        self._apply_stylesheet(theme)
     
     def setup_main_layout(self):
         """Setup main window layout"""
@@ -453,8 +375,8 @@ class MainWindow(QMainWindow):
         self.currency_frame = CurrencyEditorFrame(self.notebook, self.save_service, danger_zone_enabled)
         self.notebook.addTab(self.currency_frame, "Currencies")
 
-        self.collection_frame = CollectionEditorFrame(self.notebook, self.save_service, self.game_database)
-        self.notebook.addTab(self.collection_frame, "Collections")
+        # self.collection_frame = CollectionEditorFrame(self.notebook, self.save_service, self.game_database)
+        # self.notebook.addTab(self.collection_frame, "Collections")
 
         self.collection_set_frame = CollectionSetEditorFrame(self.notebook, self.save_service, self.dict_service, self.image_service)
         self.notebook.addTab(self.collection_set_frame, "Collection Sets")
@@ -477,6 +399,13 @@ class MainWindow(QMainWindow):
         toolbar_layout = QHBoxLayout(toolbar)
         toolbar_layout.setContentsMargins(5, 5, 5, 5)
         toolbar_layout.setSpacing(5)
+        
+        # Add logo
+        logo_label = QLabel()
+        logo_pixmap = QPixmap("images/logo.png")
+        if not logo_pixmap.isNull():
+            logo_label.setPixmap(logo_pixmap.scaled(32, 32, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            toolbar_layout.addWidget(logo_label)
         
         # Load/Save buttons
         load_btn = QPushButton("Auto-Load")
@@ -533,7 +462,7 @@ class MainWindow(QMainWindow):
         self.theme_combo = QComboBox()
         self.theme_combo.addItems(["Light", "Dark"])
         self.theme_combo.setCurrentText(str(self.settings.get('theme', 'dark')).title())
-        self.theme_combo.currentTextChanged.connect(self.on_theme_changed)
+        self.theme_combo.currentTextChanged.connect(lambda theme: self.on_theme_changed(theme))
         toolbar_layout.addWidget(self.theme_combo)
 
         # Excel data buttons
@@ -624,7 +553,7 @@ class MainWindow(QMainWindow):
         """Called when Excel data is loaded"""
         if self.game_database and len(self.game_database.get_all_categories()) > 0:
             # Update frames that depend on game_database
-            self.collection_frame.game_database = self.game_database
+            # self.collection_frame.game_database = self.game_database
             if hasattr(self, 'collection_set_frame'):
                 self.collection_set_frame.game_database = self.game_database
 
@@ -651,6 +580,7 @@ class MainWindow(QMainWindow):
                     self.refresh_excel_data()
                 else:
                     self.set_status("Excel data not selected. Categories will be unavailable.")
+                    self._close_splash_and_show()
     
     def create_inventory_tab(self) -> QWidget:
         """Create the Inventory tab that shows player's inventory"""
@@ -659,10 +589,10 @@ class MainWindow(QMainWindow):
         
         # Create a tree widget to display inventory items
         tree = QTreeWidget(frame)
-        tree.setHeaderLabels(['ID', 'Name', 'Amount', 'Category', 'Container'])
+        tree.setHeaderLabels(['ID', 'Name', 'Amount', 'Category', 'Container', 'Actions'])
         tree.setAlternatingRowColors(True)
         tree.setUniformRowHeights(True)
-        tree.setColumnCount(5)
+        tree.setColumnCount(6) # Updated from 5 to 6
         
         # Add tree widget to layout
         layout.addWidget(tree)
@@ -674,6 +604,7 @@ class MainWindow(QMainWindow):
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents) # Amount
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents) # Category
         header.setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents) # Container
+        header.setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents) # Actions
         
         # Button layout
         button_layout = QHBoxLayout()
@@ -700,6 +631,11 @@ class MainWindow(QMainWindow):
         custom_action = QAction("Custom...", self)
         custom_action.triggered.connect(self.set_custom_backpack_size)
         size_menu.addAction(custom_action)
+
+        # Add fix bag button
+        fix_bag_btn = QPushButton("Fix Inventory Bag", frame)
+        fix_bag_btn.clicked.connect(lambda: self._fix_main_inventory_bag(frame))
+        button_layout.addWidget(fix_bag_btn)
 
         button_layout.addStretch() # Push buttons to the left
         
@@ -755,6 +691,20 @@ class MainWindow(QMainWindow):
                     # Store item object for saving/editing
                     tree_item.setData(0, Qt.ItemDataRole.UserRole, item)
 
+                    # Add delete button to the "Actions" column
+                    actions_widget = QWidget()
+                    actions_layout = QHBoxLayout(actions_widget)
+                    actions_layout.setContentsMargins(0, 0, 0, 0)
+                    delete_btn = QPushButton("Delete")
+                    delete_btn.setFixedSize(60, 20) # Small fixed size for the button
+                    # Use functools.partial to pass arguments to the slot
+                    from functools import partial
+                    delete_btn.clicked.connect(partial(self._delete_inventory_item, item, frame))
+                    actions_layout.addWidget(delete_btn)
+                    actions_layout.addStretch()
+                    tree.setItemWidget(tree_item, 5, actions_widget)
+
+
                     # If there's a state with ConsummableData, show that item's info too (read-only for now)
                     if isinstance(item.state, dict) and 'ConsummableData' in item.state:
                         consumable = item.state['ConsummableData']
@@ -770,6 +720,18 @@ class MainWindow(QMainWindow):
                             cons_item.setText(2, str(cons_amount))
                             cons_item.setText(3, "Consumable")
                             cons_item.setText(4, inv_name)
+
+                            # Add delete button for consumable as well
+                            cons_item.setData(0, Qt.ItemDataRole.UserRole, item) # Still delete the parent item
+                            cons_actions_widget = QWidget()
+                            cons_actions_layout = QHBoxLayout(cons_actions_widget)
+                            cons_actions_layout.setContentsMargins(0, 0, 0, 0)
+                            cons_delete_btn = QPushButton("Delete")
+                            cons_delete_btn.setFixedSize(60, 20)
+                            cons_delete_btn.clicked.connect(partial(self._delete_inventory_item, item, frame))
+                            cons_actions_layout.addWidget(cons_delete_btn)
+                            cons_actions_layout.addStretch()
+                            tree.setItemWidget(cons_item, 5, cons_actions_widget)
                         
     def edit_inventory_amount(self, frame: QWidget):
         """Edit the amount of a selected item"""
@@ -853,7 +815,195 @@ class MainWindow(QMainWindow):
                     "The in-game maximum backpack size is 42. Setting a size greater than 42 may not be reflected in the game or may cause unexpected behavior."
                 )
             self.set_backpack_size(new_size)
+
+    def _fix_main_inventory_bag(self, frame: QWidget):
+        """Fixes the main inventory bag (ContainerInventories ID 0) by adjusting its size
+        and removing excess non-quest items based on companion count."""
+        if not self.save_service.current_save_data:
+            QMessageBox.warning(self, "Warning", "No save file loaded.")
+            return
+
+        if not self.game_database:
+            QMessageBox.warning(self, "Warning", "Game database not loaded. Cannot determine quest items.")
+            return
+
+        save_data = self.save_service.current_save_data
+        
+        # 1. Determine companion count (only those following)
+        assigned_pets = [p for p in save_data.pets if p.is_following]
+        companion_count = len(assigned_pets)
+        
+        total_granted_slots = 0
+        for pet in assigned_pets:
+            total_granted_slots += pet.granted_inventory_slots
+
+        # 2. Calculate expected bag size
+        base_size = 42
+        expected_size = base_size + total_granted_slots
+        
+        if companion_count == 0:
+            bag_space_msg = "42 (0 companions)"
+        elif companion_count == 1:
+            bag_space_msg = "49 (1 companion)"
+        else: # 2 or more companions
+            bag_space_msg = "56 (2+ companions)"
+
+        logger.info(f"Fixing main inventory bag: {companion_count} companions -> expected size {expected_size}")
+
+        # 3. Identify Main Inventory Items and separate quest/non-quest
+        all_player_inventory_items = save_data.inventory_items
+        main_bag_items: List[PlayerInventoryItem] = []
+        other_inventory_items: List[PlayerInventoryItem] = []
+
+        for item in all_player_inventory_items:
+            if item.source_type == 'container' and item.inventory_id == '0':
+                main_bag_items.append(item)
+            else:
+                other_inventory_items.append(item)
+        
+        # Filter out empty slots for actual item count
+        actual_main_bag_items = [item for item in main_bag_items if item.item_id != 0]
+
+        quest_items: List[PlayerInventoryItem] = []
+        non_quest_items: List[PlayerInventoryItem] = []
+
+        for player_item in actual_main_bag_items:
+            game_item = self.game_database.get_item_by_id(player_item.item_id)
+            if game_item and game_item.is_quest:
+                quest_items.append(player_item)
+            else:
+                non_quest_items.append(player_item)
+        
+        current_physical_item_count = len(actual_main_bag_items)
+        excess_items_count = current_physical_item_count - expected_size
+
+        message = f"Current main inventory has {current_physical_item_count} items. Expected size: {expected_size}."
+        if excess_items_count > 0:
+            logger.info(f"Excess items found: {excess_items_count}. Attempting to remove non-quest items.")
+            # Remove excess non-quest items
+            items_removed = 0
+            while items_removed < excess_items_count and non_quest_items:
+                non_quest_items.pop() # Remove from end
+                items_removed += 1
+            
+            # Reconstruct the main bag items list with remaining non-quest items and all quest items
+            items_to_keep = quest_items + non_quest_items
+            
+            # Warn if quest items prevent full truncation
+            if len(items_to_keep) > expected_size:
+                remaining_excess = len(items_to_keep) - expected_size
+                QMessageBox.warning(
+                    self,
+                    "Inventory Fix Warning",
+                    f"Warning: Your inventory still has {remaining_excess} too many items even after removing all non-quest items. "
+                    "Quest items cannot be removed automatically. Please consider removing them manually if you wish to reach the exact target size."
+                )
+                message += f"\nRemoved {items_removed} non-quest items. Still {remaining_excess} items over limit (quest items)."
+                logger.warning(f"Failed to fully truncate inventory due to {remaining_excess} quest items.")
                 
+            else:
+                QMessageBox.information(
+                    self,
+                    "Inventory Fix",
+                    f"Successfully resized your main inventory to {expected_size}. Removed {items_removed} excess non-quest items."
+                )
+                message += f"\nRemoved {items_removed} excess non-quest items."
+                logger.info(f"Successfully truncated inventory. Final item count: {len(items_to_keep)}.")
+            
+            # Update save_data.inventory_items
+            # Remove all original main_bag_items and add back the items_to_keep
+            new_all_inventory_items = other_inventory_items + items_to_keep
+            save_data.inventory_items = new_all_inventory_items
+
+        else:
+            message += "\nNo excess items found or items are below expected size. No items removed."
+            QMessageBox.information(self, "Inventory Fix", message)
+            logger.info("No excess items to remove from main inventory.")
+
+        # 4. Update 'Size' in raw save data
+        try:
+            save_dict = save_data.custom_data.get('original_save', {})
+            if 'Player' in save_dict and 'ContainerInventories' in save_dict['Player']:
+                if '0' in save_dict['Player']['ContainerInventories']:
+                    save_dict['Player']['ContainerInventories']['0']['Size'] = expected_size
+                    save_dict['Player']['ContainerInventories']['0']['ExtraBagSpace'] = total_granted_slots
+                    logger.info(f"Updated raw save data ContainerInventories ID 0 'Size' to {expected_size} and 'ExtraBagSpace' to {total_granted_slots}.")
+                    QMessageBox.information(self, "Inventory Fix", f"Backpack size adjusted to {expected_size}. Remember to save the file to apply changes.")
+                else:
+                    QMessageBox.warning(self, "Warning", "Player backpack inventory (ID 0) not found in raw save data.")
+            else:
+                QMessageBox.warning(self, "Warning", "Could not find ContainerInventories in raw save data.")
+        except Exception as e:
+            logger.error(f"Error updating raw save data 'Size': {e}")
+            QMessageBox.critical(self, "Error", f"Error updating raw save data 'Size': {e}")
+            
+        # 5. Save the file and refresh UI
+        self.set_status("Saving updated inventory...")
+        def save_and_refresh():
+            try:
+                success, save_message = self.save_service.save_file()
+                self.save_completed_signal.emit(success, save_message)
+                if success:
+                    # After saving, we need to re-parse the save_data to reflect the new size in the model
+                    # This is important because save_file() rebuilds containerInventories, but not necessarily in-memory SaveData model
+                    self.save_service.reparse_from_json(self.save_service.current_save_data.custom_data.get('original_save', {}))
+                    self.data_refreshed_signal.emit() # This will trigger refresh_inventory_tab
+                else:
+                    QMessageBox.critical(self, "Save Error", f"Failed to save changes: {save_message}")
+            except Exception as e:
+                logger.error(f"Error during save and refresh: {e}")
+                QMessageBox.critical(self, "Error", f"An error occurred during save and refresh: {e}")
+        
+                threading.Thread(target=save_and_refresh, daemon=True).start()
+
+    def _delete_inventory_item(self, player_item_to_delete: PlayerInventoryItem, frame: QWidget):
+        """Deletes a specific PlayerInventoryItem from the current save data."""
+        if not self.save_service.current_save_data:
+            QMessageBox.warning(self, "Warning", "No save file loaded.")
+            return
+
+        item_name = self.get_item_name(player_item_to_delete.item_id)
+        reply = QMessageBox.question(
+            self,
+            "Confirm Deletion",
+            f"Are you sure you want to delete '{item_name}' (ID: {player_item_to_delete.item_id}, Amount: {player_item_to_delete.amount}) from your inventory?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                # Create a new list excluding the item to delete
+                new_inventory_items = [
+                    item for item in self.save_service.current_save_data.inventory_items
+                    if not (item == player_item_to_delete) # Pydantic model equality works for comparison
+                ]
+                self.save_service.current_save_data.inventory_items = new_inventory_items
+
+                # Save the file and refresh UI
+                self.set_status(f"Deleting '{item_name}' and saving...")
+                def save_and_refresh_after_delete(): # Renamed to avoid clash
+                    try:
+                        success, save_message = self.save_service.save_file()
+                        self.save_completed_signal.emit(success, save_message)
+                        if success:
+                            # Re-parse to ensure UI reflects latest state, including potential re-sizing if relevant
+                            self.save_service.reparse_from_json(self.save_service.current_save_data.custom_data.get('original_save', {}))
+                            self.data_refreshed_signal.emit() # This will trigger refresh_inventory_tab
+                            QMessageBox.information(self, "Deletion Successful", f"'{item_name}' deleted and save updated.")
+                        else:
+                            QMessageBox.critical(self, "Save Error", f"Failed to save changes after deletion: {save_message}")
+                    except Exception as e:
+                        logger.error(f"Error during save and refresh after deletion: {e}")
+                        QMessageBox.critical(self, "Error", f"An error occurred during save and refresh after deletion: {e}")
+                
+                threading.Thread(target=save_and_refresh_after_delete, daemon=True).start()
+
+            except Exception as e:
+                logger.error(f"Error deleting inventory item: {e}")
+                QMessageBox.critical(self, "Error", f"An error occurred while deleting the item: {e}")
+        else:
+            logger.info("Item deletion cancelled by user.")
+    
     def get_item_name(self, item_id: int) -> str:
         """Get the name of an item using the Dict service."""
         try:
@@ -952,7 +1102,21 @@ class MainWindow(QMainWindow):
         group_to_container: Dict[str, QWidget] = {}
         group_to_notebook: Dict[str, QTabWidget] = {}
 
+        
+
+        # Log all available categories for debugging
+
+        if self.game_database:
+
+            all_cats = self.game_database.get_all_categories()
+
+            logger.info(f"Creating tabs for categories: {[cat.name for cat in all_cats]}")
+
+
+
         for category in self.game_database.get_all_categories():
+            if category == ItemCategory.TRIMMING:
+                continue
             collection = self.game_database.get_collection(category)
             if len(collection) == 0:
                 continue
@@ -1098,6 +1262,8 @@ class MainWindow(QMainWindow):
         )
         
         if not file_path:
+            logger.info("User cancelled save file selection.")
+            self._close_splash_and_show()
             return
         
         self._load_specific_file(file_path)
@@ -1169,6 +1335,7 @@ class MainWindow(QMainWindow):
                     QLineEdit.EchoMode.Password
                 )
                 if not ok or not key:
+                    logger.info("User cancelled decryption key entry.")
                     return
         else:
             key = None
@@ -1198,12 +1365,14 @@ class MainWindow(QMainWindow):
         )
         
         if not file_path:
+            logger.info("User cancelled manual save file selection.")
             return
         
         self._load_specific_file(file_path)
     
     def on_save_loaded(self, success: bool, message: str):
         """Called when save file loading completes"""
+        logger.info(f"Save file loading completed. Success: {success}, Message: {message}")
         self.hide_progress()
         
         if success:
@@ -1218,7 +1387,7 @@ class MainWindow(QMainWindow):
                 self.battle_pass_frame.setData(self.save_service.current_save_data.custom_data.get('original_save', {}))
 
             # Update collection editor
-            self.collection_frame.load_save_data(self.save_service.current_save_data)
+            # self.collection_frame.load_save_data(self.save_service.current_save_data)
             
             # Update collection set editor
             self.collection_set_frame.load_save_data(self.save_service.current_save_data)
@@ -1237,7 +1406,7 @@ class MainWindow(QMainWindow):
             # ToastNotification(self.root, f"Save loaded: {message}")
         else:
             self.set_status(f"Failed to load save: {message}")
-            QMessageBox.critical(self, "Error", f"Failed to load save: {message}")
+        self._close_splash_and_show()
     
     def save_file(self):
         """Save the current save file"""
@@ -1245,6 +1414,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "No save file loaded")
             return
         
+        logger.info("User requested to save the current file.")
         self.set_status("Saving file...")
         
         def save_data():
@@ -1299,6 +1469,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "No save file loaded")
             return
         
+        logger.info("User requested to save the current file to a new location.")
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             caption="Save DDV Save File As",
@@ -1307,8 +1478,10 @@ class MainWindow(QMainWindow):
         )
         
         if not file_path:
+            logger.info("User cancelled 'Save As' operation.")
             return
         
+        logger.info(f"User selected new save file location: {file_path}")
         self.set_status("Saving file...")
         
         def save_data():
@@ -1341,6 +1514,7 @@ class MainWindow(QMainWindow):
     
     def on_save_completed(self, success: bool, message: str):
         """Called when save operation completes"""
+        logger.info(f"Save completed. Success: {success}, Message: {message}")
         if success:
             self.set_status("Save completed successfully")
             # ToastNotification(self.root, f"Save successful: {message}")
@@ -1372,6 +1546,7 @@ class MainWindow(QMainWindow):
     
     def load_excel_data(self):
         """Load Excel data from a file"""
+        logger.info("User requested to load Excel data from a file.")
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             caption="Select Excel Data File",
@@ -1379,14 +1554,17 @@ class MainWindow(QMainWindow):
         )
         
         if not file_path:
+            logger.info("User cancelled Excel data file selection.")
             return
         
+        logger.info(f"User selected Excel data file: {file_path}")
         self.excel_service.excel_path = Path(file_path)
         self.refresh_excel_data()
     
     def refresh_excel_data(self):
         """Refresh data from the selected source"""
         source = str(self.settings.get('data_source', 'excel')).lower()
+        logger.info(f"Refreshing data from source: {source}")
         self.set_status(f"Refreshing {('Dict' if source=='dict' else 'Excel')} data...")
         self.show_progress()
         
@@ -1405,9 +1583,10 @@ class MainWindow(QMainWindow):
     
     def on_data_refreshed(self):
         """Called when Excel data refresh completes"""
+        logger.info("Data refresh completed.")
         self.hide_progress()
         if self.game_database:
-            self.collection_frame.game_database = self.game_database
+            # self.collection_frame.game_database = self.game_database
             if hasattr(self, 'collection_set_frame'):
                 self.collection_set_frame.game_database = self.game_database
         self.create_category_tabs()
@@ -1457,16 +1636,21 @@ class MainWindow(QMainWindow):
     
     def add_all_items(self):
         """Add all items from current category to save"""
+        logger.info("User requested to add all items from the current category.")
         frame = self._get_active_item_editor_frame()
         if frame:
             frame.add_all_items()
     
     def clear_all_items(self):
         """Clear all items from current category"""
+        logger.info("User requested to clear all items from the current category.")
         if QMessageBox.question(self, "Confirm", "Clear all items from current category?") == QMessageBox.StandardButton.Yes:
+            logger.info("User confirmed clearing all items.")
             frame = self._get_active_item_editor_frame()
             if frame:
                 frame.clear_all_items()
+        else:
+            logger.info("User cancelled clearing all items.")
 
     def _get_active_item_editor_frame(self) -> ItemEditorFrame | None:
         """Resolve the currently visible ItemEditorFrame, accounting for grouped tabs."""
@@ -1491,11 +1675,12 @@ class MainWindow(QMainWindow):
     
     def on_tab_changed(self, event):
         """Handle tab change"""
-        pass  # Could be used for lazy loading or other optimizations
+        logger.info(f"User changed to tab: {self.notebook.tabText(event)}")
 
     def _update_danger_zone_tabs(self):
         """Add or remove danger zone tabs based on settings."""
         danger_zone_enabled = self.settings.get('danger_zone_enabled', False)
+        logger.info(f"Updating danger zone tabs. Enabled: {danger_zone_enabled}")
 
         # Update the currency frame's internal state
         if hasattr(self, 'currency_frame'):
@@ -1521,9 +1706,11 @@ class MainWindow(QMainWindow):
     
     def show_settings(self):
         """Show settings dialog"""
+        logger.info("User opened the settings dialog.")
         # Preload dialog with current settings
         dialog = SettingsDialog(self, initial_settings=self.settings)
         if dialog.exec():
+            logger.info("User saved new settings.")
             # Persist settings
             new_settings = dialog.get_settings()
             # Ensure hex_key is preserved if dialog returns it
@@ -1569,52 +1756,44 @@ class MainWindow(QMainWindow):
     
     def show_backup_manager(self):
         """Show backup manager dialog"""
+        logger.info("User opened the backup manager.")
         # This would be implemented as a separate dialog
         backups = self.save_service.get_backup_list()
         if not backups:
             QMessageBox.information(self, "Backup Manager", "No backups found")
+            logger.info("No backups found.")
             return
         
         # For now, just show backup count
         QMessageBox.information(self, "Backup Manager", f"Found {len(backups)} backup files")
+        logger.info(f"Found {len(backups)} backup files.")
     
     def validate_save_file(self):
         """Validate the current save file"""
         if not self.save_service.current_save_data:
             QMessageBox.warning(self, "Warning", "No save file loaded")
+            logger.warning("Validation requested but no save file loaded.")
             return
         
-        # Basic validation
+        logger.info("User requested to validate the current save file.")
         save_data = self.save_service.current_save_data
         issues = []
-        
-        if not save_data.player_name:
-            issues.append("Player name is empty")
-        
-        if save_data.player_level < 1:
-            issues.append("Invalid player level")
-        
-        # Check for duplicate pets
-        pet_ids = [pet.pet_item_id for pet in save_data.pets]
-        if len(pet_ids) != len(set(pet_ids)):
-            issues.append("Duplicate pets found")
-        
-        if issues:
-            QMessageBox.warning(self, "Validation Issues", "\n".join(issues))
-        else:
-            QMessageBox.information(self, "Validation", "Save file appears to be valid")
     
     def clear_image_cache(self):
         """Clear image cache"""
+        logger.info("User requested to clear the image cache.")
         self.image_service.clear_cache()
         self.set_status("Image cache cleared")
+        logger.info("Image cache cleared.")
     
     def show_full_editor(self):
         """Show full editor window"""
         if not self.save_service.current_save_data:
             QMessageBox.warning(self, "Warning", "No save file loaded")
+            logger.warning("Full editor requested but no save file loaded.")
             return
             
+        logger.info("User opened the full editor window.")
         # Get the raw save data
         save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
         
@@ -1649,11 +1828,17 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "No save file loaded")
             return
             
+        logger.info("User opened the JSON viewer window.")
         # Get the raw save data
         save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
         
         # Create and show the JSON viewer window
         viewer = JsonViewerWindow(self)
+        
+        # Set size relative to main window
+        main_size = self.size()
+        viewer.resize(int(main_size.width() * 0.7), int(main_size.height() * 0.7))
+        
         viewer.load_json(save_dict)
         
         # Set up callback for when JSON is modified
@@ -1672,6 +1857,7 @@ class MainWindow(QMainWindow):
         
     def show_about(self):
         """Show about dialog"""
+        logger.info("User opened the about dialog.")
         QMessageBox.information(
             self,
             "About DDV Save Editor",
@@ -1691,6 +1877,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "No save file loaded")
             return False
             
+        logger.info(f"User requested to add specific tool: {tool_id}")
         try:
             # Get the raw save data
             save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
@@ -1720,6 +1907,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "No save file loaded")
             return
             
+        logger.info("User requested to add basic tools.")
         try:
             # Get the raw save data
             save_dict = self.save_service.current_save_data.custom_data.get('original_save', {})
@@ -1753,6 +1941,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "No save file loaded")
             return
 
+        logger.info("User requested to augment save with legacy dicts.")
         # Locate legacy C# dictionary files
         try:
             repo_root = Path(__file__).resolve().parents[2]
@@ -1896,6 +2085,7 @@ class MainWindow(QMainWindow):
         choice = (text or self.data_source_combo.currentText()).strip().lower()
         if choice not in ('excel', 'dict'):
             return
+        logger.info(f"User changed data source to: {choice}")
         self.settings['data_source'] = choice
         # If switching to Dict without a valid folder, prompt
         if choice == 'dict':
@@ -1907,8 +2097,10 @@ class MainWindow(QMainWindow):
 
     def choose_dict_folder(self):
         """Prompt user to choose Dict root and persist it"""
+        logger.info("User requested to choose a Dict folder.")
         folder = QFileDialog.getExistingDirectory(self, "Select Dict Root Folder")
         if folder:
+            logger.info(f"User selected Dict folder: {folder}")
             self.settings['dict_root'] = folder
             # Update service and reload
             try:
@@ -1919,9 +2111,19 @@ class MainWindow(QMainWindow):
             # If Dict is selected, refresh now
             if str(self.settings.get('data_source', 'excel')).lower() == 'dict':
                 self.refresh_excel_data()
+        else:
+            logger.info("User cancelled Dict folder selection.")
     
+    def _close_splash_and_show(self):
+        """Finish the splash screen and show the main window."""
+        if self.splash:
+            self.splash.finish(self)
+            self.splash = None  # Prevent multiple calls
+        self.show()
+
     def on_closing(self, event):
         """Handle window closing"""
+        logger.info("Application closing.")
         try:
             # Cleanup services
             self.image_service.close()
@@ -1931,9 +2133,9 @@ class MainWindow(QMainWindow):
             event.accept()
     
     def run(self):
-        """Start the application"""
-        self.show()
-        # Note: QApplication.exec() should be called from the main script, not here
+        """Start the application."""
+        # The window is now shown via _close_splash_and_show() after loading.
+        pass
 
     def cache_current_category_images(self):
         """Download and cache online images for all items in the visible category."""
@@ -1942,6 +2144,8 @@ class MainWindow(QMainWindow):
             if frame is None:
                 QMessageBox.information(self, "Cache Images", "Open a category tab to cache its images.")
                 return
+            
+            logger.info(f"User requested to cache images for category: {frame.category.name}")
             collection = frame.collection
             ids_and_names = [(gi.id, gi.name) for gi in collection]
             total = len(ids_and_names)
@@ -1983,3 +2187,22 @@ class MainWindow(QMainWindow):
     def handle_status_update(self, message: str):
         """Slot to handle status updates (thread-safe)"""
         self.set_status(message)
+
+    def update_stylesheet(self):
+        """Calculates and applies the global font size."""
+        width = self.size().width()
+        if width < 800:
+            font_size = 8
+        elif width < 1200:
+            font_size = 10
+        else:
+            font_size = 12
+
+        font = QApplication.font()
+        font.setPointSize(font_size)
+        QApplication.setFont(font)
+
+    def resizeEvent(self, event):
+        """Debounces resize events to avoid performance issues."""
+        self.resize_timer.start(150)
+        super().resizeEvent(event)

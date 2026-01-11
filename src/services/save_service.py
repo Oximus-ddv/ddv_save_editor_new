@@ -595,6 +595,7 @@ class SaveFileService:
         
         # Update pets
         pets_list = []
+        total_pet_inventory_slots = 0
         for pet in save_data.pets:
             # Start with original pet data if available to preserve unmodeled fields
             pet_dict = pet.raw_data.copy() if pet.raw_data else {}
@@ -615,6 +616,7 @@ class SaveFileService:
                     pet_dict['XP'] = pet.xp
             if pet.is_following:
                 pet_dict['IsFollowing'] = pet.is_following
+                total_pet_inventory_slots += pet.granted_inventory_slots # Accumulate granted slots from following pets
             if pet.last_selfie_date is not None:
                 pet_dict['LastSelfieDate'] = pet.last_selfie_date
             if pet.last_petted_date is not None:
@@ -626,6 +628,10 @@ class SaveFileService:
             pets_list.append(pet_dict)
 
         player_data['Pets'] = pets_list
+        
+        # Calculate expected backpack size based on companions
+        base_backpack_size = 42
+        expected_backpack_size = base_backpack_size + total_pet_inventory_slots
         
         # Update ContainerInventories
         # We need to preserve the structure (Size, ID, etc.) of existing containers
@@ -647,9 +653,17 @@ class SaveFileService:
             original_container = new_containers.get(inv_id, {})
             container = original_container.copy()
             
+            if inv_id == "0": # Main backpack
+                container['Size'] = expected_backpack_size
+                container['ExtraBagSpace'] = total_pet_inventory_slots
+            
             if not container:
                 # Create new container if it doesn't exist (basic structure)
-                container = {'ID': int(inv_id) if inv_id.isdigit() else 0, 'Size': len(items) + 10, 'Inventory': []}
+                # For main backpack, use calculated size, otherwise default to items + 10
+                size_for_new_container = expected_backpack_size if inv_id == "0" else len(items) + 10 
+                container = {'ID': int(inv_id) if inv_id.isdigit() else 0, 'Size': size_for_new_container, 'Inventory': []}
+                if inv_id == "0":
+                    container['ExtraBagSpace'] = total_pet_inventory_slots
             
             # Update the inventory list
             new_inv_list = []
@@ -667,14 +681,20 @@ class SaveFileService:
                     item_data['Marker'] = item.marker
                 
                 new_inv_list.append(item_data)
-                
+            
+            # Truncate if too many items for the main backpack
+            if inv_id == "0":
+                while len(new_inv_list) > expected_backpack_size:
+                    new_inv_list.pop()
+            
             # Fill remaining slots with empty items if we want to preserve size?
-            target_size = container.get('Size', len(new_inv_list))
+            # For main backpack, use expected_backpack_size, otherwise use container's size
+            target_size = expected_backpack_size if inv_id == "0" else container.get('Size', len(new_inv_list))
             
             # Fill the rest with empty items
             while len(new_inv_list) < target_size:
                 new_inv_list.append({'ItemID': 0, 'Amount': 0, 'State': None})
-                
+                    
             container['Inventory'] = new_inv_list
             new_containers[inv_id] = container
             

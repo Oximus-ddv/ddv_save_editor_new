@@ -12,10 +12,10 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSlot, QSize, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon, QColor
 
-from ..models.game_item import ItemCategory, ItemCollection, SaveData, PlayerInventoryItem, GameItem
+from ..models.game_item import ItemCategory, ItemCollection, SaveData, PlayerInventoryItem, GameItem, PetData
 from ..services.image_service import ImageService
 from ..services.save_service import SaveFileService
-from ..services.augmentation_service import InventoryType
+from ..services.augmentation_service import InventoryType, add_item_from_editor, add_specific_tool
 from .pet_editor_dialog import PetEditorDialog
 from .hover_preview import HoverPreviewBehavior
 
@@ -135,7 +135,7 @@ class ItemEditorFrame(QWidget):
         splitter.addWidget(right_widget)
         
         # Set initial splitter sizes (50/50)
-        splitter.setSizes([400, 400])
+        # splitter.setSizes([400, 400])
         
         # Populate Dictionary
         self.populate_dictionary(set())
@@ -171,6 +171,28 @@ class ItemEditorFrame(QWidget):
         sorted_collection = sorted(list(self.collection), key=lambda x: x.name)
 
         for item in sorted_collection:
+            item_id_str = str(item.id) # Define item_id_str here, outside the if blocks
+
+            # If this is a house category, apply specific filtering rules for display
+            if self.category in [ItemCategory.HOUSE_SKINS, ItemCategory.HOUSE_WALLPAPER, 
+                                 ItemCategory.HOUSE_FLOORS, ItemCategory.NPC_HOUSES]:
+                
+                is_house_wallpaper = (self.category == ItemCategory.HOUSE_WALLPAPER)
+                
+                passes_house_filter = False
+                if is_house_wallpaper:
+                    passes_house_filter = item_id_str.startswith('20') or item_id_str.startswith('160')
+                else: # Other house types (SKINS, FLOORS, NPC_HOUSES)
+                    passes_house_filter = item_id_str.startswith('20')
+                
+                if not passes_house_filter:
+                    continue # Skip this item if it doesn't pass the house filter
+
+            # Global rule: For non-house categories, exclude items starting with '20'
+            elif item_id_str.startswith('20'):
+                continue # Skip '20' items from non-house categories
+
+            # If the item passes all relevant filters, create the tree item
             tree_item = CustomQTreeWidgetItem()
             tree_item.setText(0, str(item.id))
             tree_item.setText(1, item.name)
@@ -246,9 +268,33 @@ class ItemEditorFrame(QWidget):
             self.populate_dictionary(saved_item_ids)
         self.refresh_inventory_tree()
 
-    def _is_pet_category(self):
+    def _get_backpack_capacity_info(self) -> (int, int):
+        """Calculates the expected backpack size and current item count."""
+        if not self.save_data:
+            return 0, 0
+
+        total_pet_inventory_slots = 0
+        for pet in self.save_data.pets:
+            if pet.is_following:
+                total_pet_inventory_slots += pet.granted_inventory_slots
+        
+        expected_backpack_size = 42 + total_pet_inventory_slots
+
+        current_backpack_items = [
+            item for item in self.save_data.inventory_items
+            if item.source_type == 'container' and item.inventory_id == '0' and item.item_id != 0
+        ]
+        current_item_count = len(current_backpack_items)
+
+        return expected_backpack_size, current_item_count
+
+    def _is_pet_category(self) -> bool:
         """Check if this is the pets/companions category"""
         return self.category == ItemCategory.PETS
+
+    def _is_tool_category(self) -> bool:
+        """Check if this is the tools category"""
+        return self.category == ItemCategory.TOOLS
 
     def refresh_inventory_tree(self):
         """Refresh the inventory tree from save data"""
@@ -262,32 +308,45 @@ class ItemEditorFrame(QWidget):
                 self._add_pet_tree_item(pet)
             return
 
-        # Determine which items belong to this category
-        # Match items by checking if they exist in the Dict collection
-        
-        # Creating a set of valid IDs for this category for fast lookup
-        valid_ids = {str(item.id) for item in self.collection}
-        
-        # Try to categorize items based on ID prefixes (game's ID scheme)
-        matched_items = []
-        category_items = []  # Items that match category prefix but not in Dict
-        
+        # Handle Tools specially
+        if self._is_tool_category():
+            tools = self.save_data.custom_data.get('original_save', {}).get('Player', {}).get('Tools', [])
+            for tool in tools:
+                self._add_tool_tree_item(tool)
+            return
+
+        items_to_display = []
         for inv_item in self.save_data.inventory_items:
-            item_id_str = str(inv_item.item_id)
-            
-            # Check if this item is in our Dict
-            if item_id_str in valid_ids:
-                matched_items.append(inv_item)
-            else:
-                # Check if item might belong to this category based on ID pattern
-                if self._item_matches_category(item_id_str):
-                    category_items.append(inv_item)
-        
-        # Add matched items first
-        for item in matched_items:
+            # Check if this item exists in our collection for the current category
+            game_item = self.collection.get_item(inv_item.item_id)
+            if game_item and game_item.category == self.category:
+                items_to_display.append(inv_item)
+            elif self._item_matches_category(str(inv_item.item_id)): # Fallback for items not in collection but match category pattern
+                items_to_display.append(inv_item)
+
+        for item in items_to_display:
             self._add_inv_tree_item(item)
         
-        logger.info(f"Category {self.category.name}: {len(matched_items)} matched items")
+        logger.info(f"Category {self.category.name}: {len(items_to_display)} items displayed in inventory tree")
+
+    def _add_tool_tree_item(self, tool_data: dict):
+        """Helper to add a tool to the inventory tree"""
+        tool_id = tool_data.get('ToolItemID')
+        if not tool_id:
+            return
+
+        name = "Unknown Tool"
+        game_item = self.collection.get_item(tool_id)
+        if game_item:
+            name = game_item.name
+        
+        tree_item = CustomQTreeWidgetItem(self.inv_tree)
+        tree_item.setText(0, str(tool_id))
+        tree_item.setText(1, name)
+        tree_item.setText(2, "1") # Tools are unique, amount 1
+        
+        # Store tool data object
+        tree_item.setData(0, Qt.ItemDataRole.UserRole, tool_data)
 
     def _add_pet_tree_item(self, pet):
         """Helper to add a pet to the inventory tree"""
@@ -317,7 +376,7 @@ class ItemEditorFrame(QWidget):
         
         # Pets/Companions: 12000xxxx
         if self.category == ItemCategory.PETS:
-            return item_id_str.startswith('12000')
+            return item_id_str.startswith('12000') or item_id_str.startswith('12')
         
         # All clothing items: 50xxxxxx or 51xxxxxx
         if self.category in [ItemCategory.CLOTHES_OTHER, ItemCategory.CLOTHES_OUTFITS, 
@@ -331,31 +390,70 @@ class ItemEditorFrame(QWidget):
             return (item_id_str.startswith('30') or item_id_str.startswith('31') or
                     item_id_str.startswith('40') or item_id_str.startswith('41'))
         
-        # Gliders: 70xxxxxx or 5080xxxx
+        # Gliders: 70xxxxxx
         if self.category == ItemCategory.GLIDERS:
-            return item_id_str.startswith('70') or item_id_str.startswith('5080')
-
-        # House-related: 20xxxxxx, 21xxxxxx, 60xxxxxx
-        if self.category in [ItemCategory.HOUSE_SKINS, ItemCategory.HOUSE_WALLPAPER, 
-                             ItemCategory.HOUSE_FLOORS, ItemCategory.NPC_HOUSES]:
-            return (item_id_str.startswith('20') or item_id_str.startswith('21') or
-                    item_id_str.startswith('60'))
-        
-        # NPC Skins: Often in 70xxxxxx range
-        if self.category == ItemCategory.NPC_SKINS:
             return item_id_str.startswith('70')
+            
+        # Avatar Features: 70xxxxxx (same as Gliders?)
+        if self.category == ItemCategory.AVATAR_FEATURES:
+            return item_id_str.startswith('70')
+
+        # Specific house rules:
+        # HOUSE_WALLPAPER allows '20' and '160' (as requested)
+        if self.category == ItemCategory.HOUSE_WALLPAPER:
+            return item_id_str.startswith('20') or item_id_str.startswith('160')
         
-        # Tools: 80xxxxxx
+        # Other house types only allow '20'
+        if self.category in [ItemCategory.HOUSE_SKINS, ItemCategory.HOUSE_FLOORS, ItemCategory.NPC_HOUSES]:
+            return item_id_str.startswith('20')
+        
+        # Global rule: Prevent '20' items from other inventories (unless handled above)
+        if item_id_str.startswith('20'):
+            return False # Exclude '20' items from non-house categories
+        
+        # NPC Skins: 170xxxxxx
+        if self.category == ItemCategory.NPC_SKINS:
+            return item_id_str.startswith('170')
+        
+        # Tools: 110xxxxxx or 80xxxxxx
         if self.category == ItemCategory.TOOLS:
-            return item_id_str.startswith('80')
+            return item_id_str.startswith('110') or item_id_str.startswith('80')
+            
+        # Activity: 110xxxxxx
+        if self.category == ItemCategory.ACTIVITY:
+            return item_id_str.startswith('110') or item_id_str.startswith('11')
         
-        # Food: 90xxxxxx
+        # Motifs: 100xxxxxx
+        if self.category == ItemCategory.MOTIFS:
+            return item_id_str.startswith('100')
+            
+        # Photo Mode: 190xxxxxx
+        if self.category == ItemCategory.PHOTO_MODE:
+            return item_id_str.startswith('190')
+            
+        # Mount Gear: 210xxxxxx
+        if self.category == ItemCategory.MOUNT_GEAR:
+            return item_id_str.startswith('210')
+            
+        # Scramblecoin: 180xxxxxx
+        if self.category == ItemCategory.SCRAMBLECOIN:
+            return item_id_str.startswith('180')
+            
+        # Makeup: 140xxxxxx
+        if self.category == ItemCategory.MAKEUP:
+            return item_id_str.startswith('140')
+            
+        # Trimming: 16xxxxxx
+        if self.category == ItemCategory.TRIMMING:
+            return item_id_str.startswith('16')
+        
+        # Food: 90xxxxxx (Consumables generally)
         if self.category == ItemCategory.FOOD:
             return item_id_str.startswith('90')
         
-        # Materials: 100xxxxx
+        # Materials: Crafting items
         if self.category == ItemCategory.MATERIALS:
-            return item_id_str.startswith('100')
+            return item_id_str.startswith('10') and not item_id_str.startswith('100') # Avoid Motifs conflict
         
         return False
     
@@ -410,134 +508,95 @@ class ItemEditorFrame(QWidget):
         
         # Store the PlayerInventoryItem object specifically for editing
         tree_item.setData(0, Qt.ItemDataRole.UserRole, inv_item)
-        
-        # Store the PlayerInventoryItem object specifically for editing
-        tree_item.setData(0, Qt.ItemDataRole.UserRole, inv_item)
-        
-        # Store the PlayerInventoryItem object specifically for editing
-        tree_item.setData(0, Qt.ItemDataRole.UserRole, inv_item)
-        
-        # Store the PlayerInventoryItem object specifically for editing
-        tree_item.setData(0, Qt.ItemDataRole.UserRole, inv_item)
 
     def add_selected_item(self):
         """Add selected item(s) from dictionary to save inventory"""
         if not self.save_data:
             return
-            
+
         selected_items = self.dict_tree.selectedItems()
         if not selected_items:
             return
-            
-        # Collect GameItems from selection (filtering out group headers which have no data)
-        game_items: List[GameItem] = []
-        for tree_item in selected_items:
-            data = tree_item.data(0, Qt.ItemDataRole.UserRole)
-            if isinstance(data, GameItem):
-                game_items.append(data)
-                
-        if not game_items:
-            return
 
         added_count = 0
-        updated_count = 0
-        
-        # Check which items already exist
-        existing_map = {} # item_id -> existing_object
-        
-        if self._is_pet_category():
-            for pet in self.save_data.pets:
-                existing_map[pet.pet_item_id] = pet
-        else:
-            for item in self.save_data.inventory_items:
-                existing_map[item.item_id] = item
-        
-        items_to_add = []
-        items_to_update = []
-        
-        for game_item in game_items:
-            if game_item.id in existing_map:
-                items_to_update.append((game_item, existing_map[game_item.id]))
-            else:
-                items_to_add.append(game_item)
-                
-        # Handle updates (if any)
-        if items_to_update:
-            should_update = False
-            # If only 1 item update, use specific message
-            if len(items_to_update) == 1 and len(game_items) == 1:
-                item, existing = items_to_update[0]
-                reply = QMessageBox.question(
-                    self, "Item Exists", 
-                    f"{item.name} is already in your inventory. Increase amount?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                )
-                should_update = (reply == QMessageBox.StandardButton.Yes)
-            else:
-                # Bulk update confirmation
-                reply = QMessageBox.question(
-                    self, "Items Exist", 
-                    f"{len(items_to_update)} of the selected items are already in your inventory.\nIncrease amount for these items?",
-                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-                )
-                should_update = (reply == QMessageBox.StandardButton.Yes)
-                
-            if should_update:
-                for game_item, existing_item in items_to_update:
-                    if hasattr(existing_item, 'amount'):
-                        existing_item.amount += 1
-                        updated_count += 1
-                        logger.info(f"Increased amount for item {game_item.id}")
+        for item in selected_items:
+            game_item = item.data(0, Qt.ItemDataRole.UserRole)
+            # --- NEW CHECK: Prevent adding house items not starting with '20' ---
+            if self.category in [ItemCategory.HOUSE_SKINS, ItemCategory.HOUSE_WALLPAPER, 
+                                 ItemCategory.HOUSE_FLOORS, ItemCategory.NPC_HOUSES]:
+                if not str(game_item.id).startswith('20'):
+                    QMessageBox.warning(self, "Cannot Add", f"Item '{game_item.name}' (ID: {game_item.id}) cannot be added to Houses category as it does not start with '20'.")
+                    continue # Skip adding this item
+            # --- END NEW CHECK ---
 
-        # Handle new items
-        for game_item in items_to_add:
-            item_id = game_item.id
+            # --- NEW CHECK: Filter items based on category rules before adding ---
+            game_item_id_str = str(game_item.id)
+            should_add_item = True
+            reason = ""
+
+            if self.category in [ItemCategory.HOUSE_SKINS, ItemCategory.HOUSE_WALLPAPER, 
+                                 ItemCategory.HOUSE_FLOORS, ItemCategory.NPC_HOUSES]:
+                # House categories
+                is_house_wallpaper = (self.category == ItemCategory.HOUSE_WALLPAPER)
+                
+                passes_house_filter = False
+                if is_house_wallpaper:
+                    passes_house_filter = game_item_id_str.startswith('20') or game_item_id_str.startswith('160')
+                else: # Other house types (SKINS, FLOORS, NPC_HOUSES)
+                    passes_house_filter = game_item_id_str.startswith('20')
+                
+                if not passes_house_filter:
+                    should_add_item = False
+                    reason = f"Item ID {game_item_id_str} does not match the required prefix ('20' or '160' for wallpaper, '20' for others)."
             
-            # Determine inventory ID
-            source_type = "list" if self._is_list_category() else "container"
-            inventory_id = InventoryType.get_inventory_for_id(item_id)
-            if not inventory_id:
-                inventory_id = "1" if source_type == "list" else "0"
-            
-            marker = "ItemMarker_IsNew"
-            
+            elif game_item_id_str.startswith('20'):
+                # For non-house categories, disallow items starting with '20'
+                should_add_item = False
+                reason = f"Item ID {game_item_id_str} starts with '20' and cannot be added to this category."
+
+            if not should_add_item:
+                QMessageBox.warning(self, "Cannot Add", f"Cannot add item '{game_item.name}' (ID: {game_item.id}). Reason: {reason}")
+                continue # Skip adding this item
+            # --- END NEW CHECK ---
+
             if self._is_pet_category():
-                from ..models.game_item import PetData
-                new_pet = PetData(
-                    pet_item_id=item_id,
-                    name=game_item.name,
-                    is_following=False
-                )
-                self.save_data.pets.append(new_pet)
-                logger.info(f"Added new pet: {game_item.name} (ID: {item_id})")
+                # Check if pet already exists
+                if any(p.pet_item_id == game_item.id for p in self.save_data.pets):
+                    continue
+                
+                # Also update the raw dictionary
+                player_data = self.save_data.custom_data['original_save'].setdefault('Player', {})
+                pets_list = player_data.setdefault('Pets', [])
+                
+                # Check if pet already exists in raw data
+                if any(p.get('PetItemID') == game_item.id for p in pets_list):
+                    continue
+                    
+                new_pet_dict = {
+                    'PetItemID': game_item.id,
+                    'FriendshipLevel': 1,
+                    'FriendshipXp': 0,
+                }
+                pets_list.append(new_pet_dict)
+                added_count += 1
+            elif self._is_tool_category():
+                if add_specific_tool(self.save_data.custom_data['original_save'], game_item.id):
+                    added_count += 1
             else:
-                new_item = PlayerInventoryItem(
-                    item_id=item_id,
-                    amount=1,
-                    inventory_id=inventory_id,
-                    source_type=source_type,
-                    marker=marker
-                )
-                self.save_data.inventory_items.append(new_item)
-                logger.info(f"Added new item: {game_item.name} (ID: {item_id})")
-            
-            added_count += 1
-            
+                if add_item_from_editor(self.save_data.custom_data['original_save'], game_item.id, self.category.name):
+                    added_count += 1
+        
+        if added_count > 0:
+            self.save_service.reparse_from_json(self.save_data.custom_data['original_save'])
+            message = f"Added {added_count} new item(s)."
+            if self.category == ItemCategory.TOOLS:
+                message = f"{added_count} new tool(s) have been added to your tools list."
+            elif self._is_pet_category():
+                message = f"{added_count} new companion(s) have been added to your companions list."
+            QMessageBox.information(self, "Success", message)
+
         self.data_changed.emit()
         self.refresh_inventory_tree()
-        
-        # Show summary if we did a bulk operation
-        if len(game_items) > 1:
-            msg = []
-            if added_count > 0: msg.append(f"Added {added_count} new items.")
-            if updated_count > 0: msg.append(f"Updated {updated_count} existing items.")
-            if not msg: msg.append("No changes made.")
-            
-            # Use status bar for less intrusion, or toast? 
-            # MainWindow has status signal but we are in a widget.
-            # Just log it or show info if significant.
-            if added_count + updated_count > 0:
-                logger.info(f"Bulk add complete: {', '.join(msg)}")
         
     def on_dict_item_double_clicked(self, item, column):
         self.add_selected_item()

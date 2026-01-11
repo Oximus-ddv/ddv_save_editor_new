@@ -57,7 +57,7 @@ tmp/
 *.tmp
 
 # DDV Save Editor specific
-profile.json
+
 download.json
 
 # Excel temp files

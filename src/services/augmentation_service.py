@@ -26,17 +26,18 @@ logger = logging.getLogger(__name__)
 
 class InventoryType(Enum):
     """Inventory types and their corresponding IDs in the save file"""
-    FURNITURE = "0"  # Furniture items
-    CLOTHES = "1"    # Clothing items
-    ACTIVITY = "2"   # Activity items
-    MAKEUP = "3"     # Makeup items
-    TRIMMING = "4"   # Trimming/Wallpapers/Floors
-    HOUSES = "5"     # Houses
-    TOUCHOFMAGIC = "6"  # Touch of Magic decorations
-    NPCSKINS = "7"   # NPC skins
-    BOARDGAME = "8"  # Board game items
-    AVATARFEATURE = "9"  # Avatar features
-    PHOTOMODE = "10"  # Photo mode items
+    FURNITURE = "0"
+    CLOTHES = "1"        # User labeled as PETS, but contains 50... (Clothes)
+    ACTIVITY = "2"
+    MAKEUP = "3"
+    TRIMMING = "4"
+    BUILDING = "5"       # Houses
+    MOTIFS = "6"         # Touch of Magic / Motifs
+    SKIN = "7"           # NPC Skins
+    SCRAMBLECOIN = "8"
+    AVATAR_FEATURES = "9"
+    PHOTO_MODE = "10"
+    MOUNT_GEAR = "11"    # Gliders?
 
     @staticmethod
     def get_inventory_for_id(item_id: int) -> Optional[str]:
@@ -44,22 +45,28 @@ class InventoryType(Enum):
         id_str = str(item_id)
         logger.info(f"Determining inventory for item ID: {id_str}")
         
-        # Special case: Tools (110XXXXXX) should be added to Player.Tools array, not inventory
-        if id_str.startswith("110"):
-            logger.info(f"[TOOL] Item {id_str} is a tool and should be added to Player.Tools array")
-            return None
+        # Specific Tools override: 
+        # Only specific basic tools should be redirected to Player.Tools if they duplicate functionality
+        # But generally, 110 items found in ID 2 are Activity items.
+        # We will let the specific tool adder handle the tool list, but for inventory assignment:
+        # If it's a generic addition request, we return the ID.
         
         # Map ID patterns to inventory types
         patterns = {
             # Furniture items (inventory 0)
             "40": "0",   # Furniture
             "400": "0",  # More specific furniture items
+            "30": "0",   # Sometimes 30 is furniture too
+            "31": "0",
             
             # Clothes (inventory 1)
             "50": "1",   # Clothes
+            "51": "1",
+            "12": "1",   # Maybe? Pets are 12000... if they go here?
             
             # Activity items (inventory 2)
-            # "110": "2",  # Activity items - REMOVED: Tools should go to Player.Tools
+            "110": "2",  # Activity items (includes Tools too, but save defines them here)
+            "11": "2",   # Broader activity match?
             
             # Makeup (inventory 3)
             "140": "3",  # Makeup items
@@ -67,29 +74,37 @@ class InventoryType(Enum):
             # Trimming/Wallpapers/Floors (inventory 4)
             "16": "4",   # Wallpapers and Floors
             
-            # Houses (inventory 5)
+            # Houses/Buildings (inventory 5)
             "2000": "5", # Villager Houses
             "2050": "5", # House Dreamstyles
             "20":   "5", # General Houses fallback
+            "21":   "5",
+            "60":   "5", # Sometimes 60 is house related
             
-            # Touch of Magic (inventory 6)
-            "100": "6",  # Touch of Magic decorations
+            # Motifs (inventory 6)
+            "100": "6",  # Motifs / Touch of Magic
             
             # NPC Skins (inventory 7)
             "170": "7",  # NPC skins
             
-            # Board games (inventory 8)
+            # Scramblecoin (inventory 8)
             "180": "8",  # Board game items
             
             # Avatar features (inventory 9)
-            "190": "9",  # Avatar features
+            "70": "9",   # Found in user scan (70000001, etc)
             
             # Photo mode (inventory 10)
-            "200": "10", # Photo mode items
+            "190": "10", # Found in user scan (190000000, etc)
+            
+            # Mount Gear (inventory 11)
+            "210": "11", # Found in user scan (210400003, etc)
         }
         
         # Try to match the ID pattern
-        for pattern, inv_id in patterns.items():
+        # Sort patterns by length descending to match specific prefixes first
+        sorted_patterns = sorted(patterns.items(), key=lambda x: len(x[0]), reverse=True)
+        
+        for pattern, inv_id in sorted_patterns:
             if id_str.startswith(pattern):
                 logger.info(f"[OK] Item {id_str} matches pattern {pattern}, assigned to inventory {inv_id}")
                 return inv_id
@@ -98,7 +113,7 @@ class InventoryType(Enum):
         return None
 
 
-RE_CS_INT_ENTRY = re.compile(r"\{\s*(\d{5,9})\s*,\s*\".*?\"\s*\}")
+RE_CS_INT_ENTRY = re.compile(r"{\s*(\d{5,9})\s*,\s*.*?\s*}")
 
 
 def parse_ids_from_csharp_dict(cs_path: Path) -> Set[int]:
@@ -306,9 +321,10 @@ def add_item_to_save(
     """
     logger.info(f"[START] Adding single item. ID: {item_id}, Amount: {amount}, Override inventory: {inventory_id}")
     
-    # Special case: Tools (110XXXXXX) should be added to Player.Tools array
-    if str(item_id).startswith("110"):
-        logger.info(f"[TOOL] Item {item_id} is a tool, adding to Player.Tools array")
+    # Special case: Tools (80XXXXXX) should be added to Player.Tools array?
+    # We obey user request: 110 items (Tools/Activity) go to Inventory 2.
+    if str(item_id).startswith("80"):
+        logger.info(f"[TOOL] Item {item_id} appears to be a tool")
         return add_specific_tool(save_dict, item_id, False)
     
     if inventory_id is None:
@@ -320,5 +336,47 @@ def add_item_to_save(
     logger.info(f"[PROCESS] Using inventory {inventory_id} for item {item_id}")
     inv = _get_inventory_dict(save_dict, inventory_id)
     inv[str(item_id)] = {"Amount": amount}
+    logger.info(f"[OK] Successfully added item {item_id} to inventory {inventory_id}")
+    return True
+
+def add_item_from_editor(save_data: Dict[str, Any], item_id: int, category: str) -> bool:
+    """
+    Add a single item to the save dict from the editor, automatically determining the correct inventory.
+    
+    Args:
+        save_data: The save dictionary to modify
+        item_id: The ID of the item to add
+        category: The category of the item
+    
+    Returns:
+        bool: True if item was added successfully, False otherwise
+    """
+    logger.info(f"[EDITOR] Adding single item. ID: {item_id}, Category: {category}")
+    
+    # Try getting the correct inventory via ID mapping first
+    inventory_id = InventoryType.get_inventory_for_id(item_id)
+    
+    # Only if mapping FAILED, and it's explicitly TOOLS, try adding to Player.Tools
+    if inventory_id is None and category == "TOOLS":
+        logger.info(f"[TOOL] Item {item_id} not mapped to inventory, adding to Player.Tools array")
+        return add_specific_tool(save_data, item_id, False)
+    
+    # inventory_id matches...
+    if inventory_id is None:
+        if category == "PETS":
+            # Fallback for pets? If 12000... didn't match anything?
+            # User scan ID 1 was PETS (Clothes).
+            # True pets (12xxx) usually not in ListInventories.
+            # We accept failure here if pattern doesn't match?
+            # Or default to 1?
+            logger.warning(f"[WARN] Pet item {item_id} not matched to pattern. Defaulting to None.")
+            pass
+            
+        logger.error(f"[ERROR] Could not determine inventory for item {item_id}")
+        return False
+    
+    logger.info(f"[PROCESS] Using inventory {inventory_id} for item {item_id}")
+    inv = _get_inventory_dict(save_data, inventory_id)
+    inv[str(item_id)] = {"Amount": 1, "Marker": "ItemMarker_None"}
     logger.info(f"[OK] Successfully added item {item_id} to inventory {inventory_id}")
     return True

@@ -77,7 +77,7 @@ class BattlePassEditor(QWidget):
         currency_layout.addWidget(QLabel("Currency Amount:"))
         currency_spin = QSpinBox()
         currency_spin.setRange(0, 999999)
-        currency_spin.setMinimumWidth(100)
+        # currency_spin.setMinimumWidth(100)
         currency_val = event_data.get('CurrencyAmount', 0)
         currency_spin.setValue(int(currency_val))
         currency_layout.addWidget(currency_spin)

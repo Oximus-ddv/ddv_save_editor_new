@@ -22,7 +22,7 @@ class SettingsDialog(QDialog):
     def __init__(self, parent, initial_settings: Optional[Dict[str, Any]] = None):
         super().__init__(parent)
         self.setWindowTitle("Settings")
-        self.setFixedSize(500, 400)
+        # self.setFixedSize(500, 400)
         self.setWindowModality(Qt.WindowModality.ApplicationModal)
         
         self._initial = initial_settings or {}

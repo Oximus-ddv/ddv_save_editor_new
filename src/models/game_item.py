@@ -8,100 +8,107 @@ from enum import Enum
 
 class ItemCategory(str, Enum):
     """Available item categories with their numeric IDs"""
-    PETS = "pets"  # ID: 1
+    PETS = "pets"  # ID: 1 (or 12 for actual pets?)
     
-    # Clothing subcategories (10-19)
-    CLOTHES_OUTFITS = "clothes_outfits"  # ID: 10
-    CLOTHES_TOPS = "clothes_tops"  # ID: 11
-    CLOTHES_BOTTOMS = "clothes_bottoms"  # ID: 12
-    CLOTHES_HELMETS = "clothes_helmets"  # ID: 13
-    CLOTHES_SHOES = "clothes_shoes"  # ID: 14
-    CLOTHES_ACCESSORIES = "clothes_accessories"  # ID: 15
-    CLOTHES_OTHER = "clothes_other"  # ID: 16
+    # Clothing subcategories (Inventory 1)
+    CLOTHES_OUTFITS = "clothes_outfits"
+    CLOTHES_TOPS = "clothes_tops"
+    CLOTHES_BOTTOMS = "clothes_bottoms"
+    CLOTHES_HELMETS = "clothes_helmets"
+    CLOTHES_SHOES = "clothes_shoes"
+    CLOTHES_ACCESSORIES = "clothes_accessories"
+    CLOTHES_OTHER = "clothes_other"
     
-    # House subcategories (20-29)
-    HOUSE_SKINS = "house_skins"  # ID: 20
-    HOUSE_WALLPAPER = "house_wallpaper"  # ID: 21
-    HOUSE_FLOORS = "house_floors"  # ID: 22
-    NPC_HOUSES = "npc_houses"  # ID: 23
+    # House subcategories (Inventory 5)
+    HOUSE_SKINS = "house_skins"
+    HOUSE_WALLPAPER = "house_wallpaper"
+    HOUSE_FLOORS = "house_floors"
+    NPC_HOUSES = "npc_houses"
     
-    # Other categories (30+)
-    NPC_SKINS = "npc_skins"  # ID: 30
-    FURNITURE = "furniture"  # ID: 31
-    TOOLS = "tools"  # ID: 32
-    FOOD = "food"  # ID: 33
-    MATERIALS = "materials"  # ID: 34
+    # Other categories
+    NPC_SKINS = "npc_skins"  # Inventory 7
+    FURNITURE = "furniture"  # Inventory 0
+    TOOLS = "tools"
+    FOOD = "food"
+    MATERIALS = "materials"
     
     # New categories
-    MOTIFS = "motifs"  # ID: 10
-    GLIDERS = "gliders"  # ID: 70
-    MAKEUP = "makeup"  # ID: 140
-    TRIMMING = "trimming"  # ID: 16
-    ACTIVITY = "activity"  # ID: 110
-    SCRAMBLECOIN = "scramblecoin"  # ID: 180
-    AVATAR_FEATURES = "avatar_features"  # ID: 70
-    PHOTO_MODE = "photo_mode"  # ID: 190
+    MOTIFS = "motifs"  # Inventory 6
+    GLIDERS = "gliders"  # Inventory 9 (Avatar Features) or 11 (Mount Gear)?
+    MAKEUP = "makeup"  # Inventory 3
+    TRIMMING = "trimming"  # Inventory 4
+    ACTIVITY = "activity"  # Inventory 2
+    SCRAMBLECOIN = "scramblecoin"  # Inventory 8
+    AVATAR_FEATURES = "avatar_features"  # Inventory 9
+    PHOTO_MODE = "photo_mode"  # Inventory 10
+    MOUNT_GEAR = "mount_gear" # Inventory 11
     
     def get_id(self) -> int:
-        """Get the numeric ID for this category"""
+        """Get the numeric ID for this category (Inventory ID)"""
         category_ids = {
+            "furniture": 0,
+            
+            # Clothes / Pets (1)
             "pets": 1,
-            "clothes_outfits": 10,
-            "clothes_tops": 11,
-            "clothes_bottoms": 12,
-            "clothes_helmets": 13,
-            "clothes_shoes": 14,
-            "clothes_accessories": 15,
-            "clothes_other": 16,
-            "house_skins": 20,
-            "house_wallpaper": 21,
-            "house_floors": 22,
-            "npc_houses": 23,
-            "npc_skins": 30,
-            "furniture": 31,
-            "tools": 32,
-            "food": 33,
-            "materials": 34,
-            "motifs": 6,
-            "gliders": 70,
+            "clothes_outfits": 1,
+            "clothes_tops": 1,
+            "clothes_bottoms": 1,
+            "clothes_helmets": 1,
+            "clothes_shoes": 1,
+            "clothes_accessories": 1,
+            "clothes_other": 1,
+            
+            "activity": 2,
             "makeup": 3,
             "trimming": 4,
-            "activity": 2,
+            
+            # Buildings (5)
+            "house_skins": 5,
+            "npc_houses": 5,
+            "house_wallpaper": 5,
+            "house_floors": 5,
+            
+            "motifs": 6,
+            "npc_skins": 7,
             "scramblecoin": 8,
+            
+            # Avatar features (9) matches 70xxxx IDs
             "avatar_features": 9,
-            "photo_mode": 5
+            "gliders": 9, # Assuming Gliders (70xxxx) go here. Or do they go to 11?
+                         # Analysis showed 11 is 210xxxx. 9 is 70xxxx.
+                         # If items are 70xxxx, they MUST return 9.
+            
+            "photo_mode": 10,
+            
+            # Mount Gear (11) matches 210xxxx IDs
+            "mount_gear": 11,
+            
+            # Others (Tools/Food/Materials usually NOT in ListInventories)
+            # But if forced:
+            "tools": 2, # Often with Activity?
+            
+            # Legacy/Unsure
+            "materials": 0, 
+            "food": 0
         }
-        return category_ids[self.value]
+        return category_ids.get(self.value, 0)
     
     @classmethod
     def from_id(cls, id: int) -> Optional["ItemCategory"]:
-        """Get a category from its numeric ID"""
+        """Get a representative category from its numeric Inventory ID"""
         id_to_category = {
-            1: cls.PETS,
-            10: cls.CLOTHES_OUTFITS,
-            11: cls.CLOTHES_TOPS,
-            12: cls.CLOTHES_BOTTOMS,
-            13: cls.CLOTHES_HELMETS,
-            14: cls.CLOTHES_SHOES,
-            15: cls.CLOTHES_ACCESSORIES,
-            16: cls.CLOTHES_OTHER,
-            20: cls.HOUSE_SKINS,
-            21: cls.HOUSE_WALLPAPER,
-            22: cls.HOUSE_FLOORS,
-            23: cls.NPC_HOUSES,
-            30: cls.NPC_SKINS,
-            31: cls.FURNITURE,
-            32: cls.TOOLS,
-            33: cls.FOOD,
-            34: cls.MATERIALS,
+            0: cls.FURNITURE,
+            1: cls.CLOTHES_TOPS, # Representative for Clothes
             2: cls.ACTIVITY,
             3: cls.MAKEUP,
             4: cls.TRIMMING,
-            5: cls.PHOTO_MODE,
+            5: cls.HOUSE_SKINS, # Representative for Buildings
             6: cls.MOTIFS,
+            7: cls.NPC_SKINS,
             8: cls.SCRAMBLECOIN,
             9: cls.AVATAR_FEATURES,
-            70: cls.GLIDERS
+            10: cls.PHOTO_MODE,
+            11: cls.MOUNT_GEAR,
         }
         return id_to_category.get(id)
 
@@ -285,8 +292,16 @@ class GameDatabase(BaseModel):
         self.collections[item.category].add_item(item)
     
     def get_item(self, category: ItemCategory, item_id: int) -> Optional[GameItem]:
-        """Get a specific item"""
+        """Get a specific item by category and ID"""
         return self.collections[category].get_item(item_id)
+    
+    def get_item_by_id(self, item_id: int) -> Optional[GameItem]:
+        """Get a specific item by ID, searching across all categories."""
+        for collection in self.collections.values():
+            item = collection.get_item(item_id)
+            if item:
+                return item
+        return None
     
     def search_all_items(self, query: str) -> Dict[ItemCategory, List[GameItem]]:
         """Search across all categories"""

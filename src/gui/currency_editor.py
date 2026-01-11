@@ -76,13 +76,13 @@ class CurrencyEditorFrame(QWidget):
         
         # Player name
         player_layout.addWidget(QLabel("Player Name:"), 0, 0)
-        self.player_name_edit.setMinimumWidth(200)
+        # self.player_name_edit.setMinimumWidth(200)
         player_layout.addWidget(self.player_name_edit, 0, 1)
         
         # Player level
         player_layout.addWidget(QLabel("Level:"), 1, 0)
         self.player_level_spinbox.setRange(1, 999)
-        self.player_level_spinbox.setMinimumWidth(100)
+        # self.player_level_spinbox.setMinimumWidth(100)
         player_layout.addWidget(self.player_level_spinbox, 1, 1)
         
         parent_layout.addWidget(player_group)
@@ -113,18 +113,18 @@ class CurrencyEditorFrame(QWidget):
             
             # SpinBox
             spinbox.setRange(0, 2147483647)
-            spinbox.setMinimumWidth(150)
+            # spinbox.setMinimumWidth(150)
             self.currency_layout.addWidget(spinbox, i, 1)
             
             # Max button
             max_btn = QPushButton("Max")
-            max_btn.setMaximumWidth(60)
+            # max_btn.setMaximumWidth(60)
             max_btn.clicked.connect(lambda checked, sb=spinbox: self.set_max_currency(sb))
             self.currency_layout.addWidget(max_btn, i, 2)
             
             # Reset button
             reset_btn = QPushButton("Reset")
-            reset_btn.setMaximumWidth(60)
+            # reset_btn.setMaximumWidth(60)
             reset_btn.clicked.connect(lambda checked, sb=spinbox: sb.setValue(0))
             self.currency_layout.addWidget(reset_btn, i, 3)
 
@@ -137,18 +137,18 @@ class CurrencyEditorFrame(QWidget):
 
         spinbox = moonstone_currency[1]
         spinbox.setRange(0, 2147483647)
-        spinbox.setMinimumWidth(150)
+        # spinbox.setMinimumWidth(150)
         self.currency_layout.addWidget(spinbox, i, 1)
         self.moonstone_widgets.append(spinbox)
 
         max_btn = QPushButton("Max")
-        max_btn.setMaximumWidth(60)
+        # max_btn.setMaximumWidth(60)
         max_btn.clicked.connect(lambda checked, sb=spinbox: self.set_max_currency(sb))
         self.currency_layout.addWidget(max_btn, i, 2)
         self.moonstone_widgets.append(max_btn)
 
         reset_btn = QPushButton("Reset")
-        reset_btn.setMaximumWidth(60)
+        # reset_btn.setMaximumWidth(60)
         reset_btn.clicked.connect(lambda checked, sb=spinbox: sb.setValue(0))
         self.currency_layout.addWidget(reset_btn, i, 3)
         self.moonstone_widgets.append(reset_btn)
