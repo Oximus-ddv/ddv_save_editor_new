@@ -39,9 +39,14 @@ def main():
         "--name", "DDV_Save_Editor",    # Output name
         "--icon", "icon.ico",           # Icon (if exists)
         "--add-data", "README.md;.",    # Include README
+        "--add-data", "settings.json;.", # Include settings.json
+        "--add-data", "Dict.zip;.",      # Include Dict.zip
+        "--add-data", "images;images",   # Include images directory
         "--hidden-import", "PIL",       # Ensure PIL is included
         "--hidden-import", "pandas",    # Ensure pandas is included
         "--hidden-import", "openpyxl",  # Ensure openpyxl is included
+        "--hidden-import", "qdarktheme", # Ensure qdarktheme is included
+        "--hidden-import", "qdarktheme.palette", # Ensure qdarktheme.palette is included
         
         # ---------------------------------------------------------
         # 👇 FIX ADDED HERE: Force exclude conflicting Qt bindings
