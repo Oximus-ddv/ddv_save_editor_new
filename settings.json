@@ -11,6 +11,6 @@
   "theme": "dark",
   "hex_key": "62357168683873614a38556c444a557a545a5864325467366d626f3857386e35",
   "dict_root": "Dict",
-  "data_source": "dict",
+  "data_source": "excel",
   "danger_zone_enabled": false
 }

@@ -570,7 +570,7 @@ class MainWindow(QMainWindow):
             else:
                 # Prompt user to locate the Excel data file when running from a packaged .exe
                 self.set_status("No Excel data found. Please select the Excel file.")
-                file_path = filedialog.askopenfilename(
+                file_path = QFileDialog.askopenfilename(
                     title="Select Excel Data File",
                     filetypes=[("Excel files", "*.xlsx"), ("All files", "*.*")]
                 )
