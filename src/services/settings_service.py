@@ -1,6 +1,7 @@
 """
 Simple settings persistence service for DDV Save Editor
 """
+
 from __future__ import annotations
 
 import json
@@ -25,7 +26,6 @@ class SettingsService:
     @staticmethod
     def default_settings() -> Dict[str, Any]:
         return {
-            "excel_path": "Disney Dream Light ID List - Mainted by Rubyelf.xlsx",
             "image_zip_path": "img.zip",
             "image_folder_path": "img",
             "max_backups": 10,
@@ -75,5 +75,3 @@ class SettingsService:
             return (w, h)
         except Exception:
             return fallback
-
-

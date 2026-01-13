@@ -9,6 +9,7 @@ from pathlib import Path
 import time
 import traceback
 import platform
+import ctypes # Added for Windows AppUserModelID
 
 # Add src directory to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -16,7 +17,30 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from src.gui.main_window import MainWindow
 from PyQt6.QtWidgets import QApplication, QSplashScreen
 from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QIcon
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QCoreApplication
+
+
+# Custom log handler for splash screen
+class SplashLogHandler(logging.Handler):
+    def __init__(self, splash):
+        super().__init__()
+        self.splash = splash
+
+    def emit(self, record):
+        if self.splash: # Check if splash exists
+            msg = self.format(record)
+            self.splash.showMessage(msg, Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignLeft, Qt.GlobalColor.white)
+            QCoreApplication.processEvents()
+
+
+# For Windows Taskbar icon (AppUserModelID)
+if platform.system() == "Windows":
+    myappid = 'DDV.SaveEditor.v1.0' # arbitrary string, unique to your application
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except AttributeError:
+        # Not available on all Windows versions, or if ctypes is not fully loaded.
+        pass
 
 
 def handle_exception(exc_type, exc_value, exc_traceback):
@@ -42,7 +66,7 @@ Python: {platform.python_version()}
         QMessageBox.critical(
             None,
             "Application Crashed",
-            "An unexpected error occurred and the application needs to close.\\n\\n"
+            "An unexpected error occurred and the application needs to close.\n\n"
             "A 'crash_report.txt' file has been created with details of the error."
         )
     except:
@@ -56,29 +80,35 @@ Python: {platform.python_version()}
 def setup_logging():
     """Setup logging configuration"""
     logging.basicConfig(
-        level=logging.INFO,
+        level=logging.DEBUG,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler('ddv_editor.log'),
+            logging.FileHandler(Path(__file__).parent / 'ddv_editor.log'),
             logging.StreamHandler(sys.stdout)
         ]
     )
-
 
 def main():
     """Main application entry point"""
     # Setup logging
     setup_logging()
     logger = logging.getLogger(__name__)
-    logger.info("Starting DDV Save Editor - PyQt6 Version")
     
     # Install exception hook
     sys.excepthook = handle_exception
     
     # Create QApplication instance
     app = QApplication(sys.argv)
-    # Set application icon
-    app.setWindowIcon(QIcon("images/logo.png"))
+    
+    # Set application name and icon for better taskbar integration
+    app.setApplicationName("DDV Save Editor")
+    app.setApplicationDisplayName("DDV Save Editor")
+
+    icon_path = Path("images/logo.ico")
+    if not icon_path.exists():
+        icon_path = Path("images/logo.png") # Fallback to PNG
+        
+    app.setWindowIcon(QIcon(str(icon_path)))
     
     # Create and show splash screen
     splash_image_png_path = Path("images/splash_screen.png")
@@ -105,8 +135,17 @@ def main():
     splash = QSplashScreen(pixmap)
     splash.show()
     
+    # Setup splash screen logging
+    splash_handler = SplashLogHandler(splash)
+    formatter = logging.Formatter('%(message)s')
+    splash_handler.setFormatter(formatter)
+    splash_handler.setLevel(logging.INFO)
+    logging.getLogger().addHandler(splash_handler)
+
+    logger.info("Starting DDV Save Editor")
+    
     # Create and show the main window, passing the splash screen
-    window = MainWindow(splash=splash)
+    window = MainWindow(splash=splash, splash_handler=splash_handler)
     window.run()
     
     # Start the event loop

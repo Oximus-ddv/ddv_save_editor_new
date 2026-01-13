@@ -37,7 +37,7 @@ def main():
         "--onefile",                    # Create single file
         "--windowed",                   # Don't show console window
         "--name", "DDV_Save_Editor",    # Output name
-        "--icon", "icon.ico",           # Icon (if exists)
+        "--icon", "images/logo.ico",    # Icon (if exists)
         "--add-data", "README.md;.",    # Include README
         "--add-data", "settings.json;.", # Include settings.json
         "--add-data", "Dict.zip;.",      # Include Dict.zip
@@ -58,9 +58,9 @@ def main():
     ]
     
     # Remove icon parameter if icon doesn't exist
-    if not Path("icon.ico").exists():
+    if not Path("images/logo.ico").exists():
         cmd.remove("--icon")
-        cmd.remove("icon.ico")
+        cmd.remove("images/logo.ico")
     
     try:
         # Run PyInstaller

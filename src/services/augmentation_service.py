@@ -1,6 +1,7 @@
 """
 Augmentation helpers to safely add items to a DDV save dict without overwriting unrelated data.
 """
+
 from __future__ import annotations
 
 import json
@@ -14,101 +15,95 @@ from enum import Enum
 
 # Configure logging to output to both file and console
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.DEBUG,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler('augmentation.log', mode='w')
-    ]
+        logging.FileHandler("augmentation.log", mode="a"),
+    ],
 )
 logger = logging.getLogger(__name__)
 
 
 class InventoryType(Enum):
     """Inventory types and their corresponding IDs in the save file"""
+
     FURNITURE = "0"
-    CLOTHES = "1"        # User labeled as PETS, but contains 50... (Clothes)
+    CLOTHES = "1"  # User labeled as PETS, but contains 50... (Clothes)
     ACTIVITY = "2"
     MAKEUP = "3"
     TRIMMING = "4"
-    BUILDING = "5"       # Houses
-    MOTIFS = "6"         # Touch of Magic / Motifs
-    SKIN = "7"           # NPC Skins
+    BUILDING = "5"  # Houses
+    MOTIFS = "6"  # Touch of Magic / Motifs
+    SKIN = "7"  # NPC Skins
     SCRAMBLECOIN = "8"
     AVATAR_FEATURES = "9"
     PHOTO_MODE = "10"
-    MOUNT_GEAR = "11"    # Gliders?
+    MOUNT_GEAR = "11"  # Gliders?
 
     @staticmethod
     def get_inventory_for_id(item_id: int) -> Optional[str]:
         """Determine which inventory an item belongs to based on its ID pattern"""
         id_str = str(item_id)
         logger.info(f"Determining inventory for item ID: {id_str}")
-        
-        # Specific Tools override: 
+
+        # Specific Tools override:
         # Only specific basic tools should be redirected to Player.Tools if they duplicate functionality
         # But generally, 110 items found in ID 2 are Activity items.
         # We will let the specific tool adder handle the tool list, but for inventory assignment:
         # If it's a generic addition request, we return the ID.
-        
+
         # Map ID patterns to inventory types
         patterns = {
             # Furniture items (inventory 0)
-            "40": "0",   # Furniture
+            "40": "0",  # Furniture
             "400": "0",  # More specific furniture items
-            "30": "0",   # Sometimes 30 is furniture too
+            "30": "0",  # Sometimes 30 is furniture too
             "31": "0",
-            
             # Clothes (inventory 1)
-            "50": "1",   # Clothes
+            "50": "1",  # Clothes
             "51": "1",
-            "12": "1",   # Maybe? Pets are 12000... if they go here?
-            
+            "12": "1",  # Maybe? Pets are 12000... if they go here?
             # Activity items (inventory 2)
             "110": "2",  # Activity items (includes Tools too, but save defines them here)
-            "11": "2",   # Broader activity match?
-            
+            "11": "2",  # Broader activity match?
             # Makeup (inventory 3)
             "140": "3",  # Makeup items
-            
             # Trimming/Wallpapers/Floors (inventory 4)
-            "16": "4",   # Wallpapers and Floors
-            
+            "16": "4",  # Wallpapers and Floors
             # Houses/Buildings (inventory 5)
-            "2000": "5", # Villager Houses
-            "2050": "5", # House Dreamstyles
-            "20":   "5", # General Houses fallback
-            "21":   "5",
-            "60":   "5", # Sometimes 60 is house related
-            
+            "2000": "5",  # Villager Houses
+            "2050": "5",  # House Dreamstyles
+            "20": "5",  # General Houses fallback
+            "21": "5",
+            "60": "5",  # Sometimes 60 is house related
             # Motifs (inventory 6)
             "100": "6",  # Motifs / Touch of Magic
-            
             # NPC Skins (inventory 7)
             "170": "7",  # NPC skins
-            
             # Scramblecoin (inventory 8)
             "180": "8",  # Board game items
-            
             # Avatar features (inventory 9)
-            "70": "9",   # Found in user scan (70000001, etc)
-            
+            "70": "9",  # Found in user scan (70000001, etc)
             # Photo mode (inventory 10)
-            "190": "10", # Found in user scan (190000000, etc)
-            
+            "190": "10",  # Found in user scan (190000000, etc)
             # Mount Gear (inventory 11)
-            "210": "11", # Found in user scan (210400003, etc)
+            "210": "11",  # Found in user scan (210400003, etc)
         }
-        
+
         # Try to match the ID pattern
         # Sort patterns by length descending to match specific prefixes first
-        sorted_patterns = sorted(patterns.items(), key=lambda x: len(x[0]), reverse=True)
-        
+        sorted_patterns = sorted(
+            patterns.items(), key=lambda x: len(x[0]), reverse=True
+        )
+
         for pattern, inv_id in sorted_patterns:
             if id_str.startswith(pattern):
-                logger.info(f"[OK] Item {id_str} matches pattern {pattern}, assigned to inventory {inv_id}")
+                logger.info(
+                    f"[OK] Item {id_str} matches pattern {pattern}, assigned to inventory {inv_id}"
+                )
                 return inv_id
-                
+
         logger.warning(f"[ERROR] Could not determine inventory for item ID: {id_str}")
         return None
 
@@ -125,7 +120,9 @@ def parse_ids_from_csharp_dict(cs_path: Path) -> Set[int]:
             item_id = int(m.group(1))
             ids.add(item_id)
         except ValueError as e:
-            logger.warning(f"Failed to parse item ID from match: {m.group(0)}, error: {e}")
+            logger.warning(
+                f"Failed to parse item ID from match: {m.group(0)}, error: {e}"
+            )
             continue
     logger.info(f"Found {len(ids)} valid item IDs in {cs_path}")
     return ids
@@ -149,7 +146,7 @@ def add_items_to_inventory(
     added = 0
     replaced = 0
     skipped = 0
-    
+
     logger.info(f"Adding items to inventory. Mode: {mode}, Amount: {amount}")
     for item_id in item_ids:
         key = str(item_id)
@@ -171,24 +168,25 @@ def add_items_to_inventory(
             logger.info(f"[ADD] New item {key} with amount {amount}")
             inventory[key] = {"Amount": amount}
             added += 1
-            
-    logger.info(f"Operation complete. Added: {added}, Replaced: {replaced}, Skipped: {skipped}")
+
+    logger.info(
+        f"Operation complete. Added: {added}, Replaced: {replaced}, Skipped: {skipped}"
+    )
     return added, replaced, skipped
 
 
-def add_specific_tool(save_dict: Dict[str, Any], tool_id: int, current_of_type: bool = False) -> bool:
+def add_specific_tool(
+    save_dict: Dict[str, Any], tool_id: int, current_of_type: bool = False
+) -> bool:
     """Add a specific tool to the player's inventory"""
     # Get or create Tools list in Player
-    player_data = save_dict.setdefault('Player', {})
-    tools_list = player_data.setdefault('Tools', [])
-    
+    player_data = save_dict.setdefault("Player", {})
+    tools_list = player_data.setdefault("Tools", [])
+
     # Check if tool already exists
-    if not any(tool.get('ToolItemID') == tool_id for tool in tools_list):
+    if not any(tool.get("ToolItemID") == tool_id for tool in tools_list):
         logger.info(f"[TOOL] Adding new tool {tool_id} to Player.Tools array")
-        tools_list.append({
-            'ToolItemID': tool_id,
-            'CurrentOfType': current_of_type
-        })
+        tools_list.append({"ToolItemID": tool_id, "CurrentOfType": current_of_type})
         return True
     logger.info(f"[TOOL] Tool {tool_id} already exists in Player.Tools array")
     return False
@@ -204,45 +202,47 @@ def add_basic_tools(save_dict: Dict[str, Any], amount: int = 1) -> Dict[str, Any
         110400004: "Monster Pickaxe",
         110500001: "Nefarious Watering Can",
         110600001: "Nefarious Phone",
-        110700007: "Nefarious Hourglass"
+        110700007: "Nefarious Hourglass",
     }
-    
+
     # Get or create Tools list in Player
-    player_data = save_dict.setdefault('Player', {})
-    tools_list = player_data.setdefault('Tools', [])
-    
+    player_data = save_dict.setdefault("Player", {})
+    tools_list = player_data.setdefault("Tools", [])
+
     # Add each tool if not already present
     added_tools = []
     for tool_id, tool_name in basic_tools.items():
         # Check if tool already exists
-        if not any(tool.get('ToolItemID') == tool_id for tool in tools_list):
-            logger.info(f"[TOOL] Adding new tool {tool_id} ({tool_name}) to Player.Tools array")
-            tools_list.append({
-                'ToolItemID': tool_id,
-                'CurrentOfType': False
-            })
+        if not any(tool.get("ToolItemID") == tool_id for tool in tools_list):
+            logger.info(
+                f"[TOOL] Adding new tool {tool_id} ({tool_name}) to Player.Tools array"
+            )
+            tools_list.append({"ToolItemID": tool_id, "CurrentOfType": False})
             added_tools.append(tool_name)
         else:
-            logger.info(f"[TOOL] Tool {tool_id} ({tool_name}) already exists in Player.Tools array")
-    
-    return {
-        'tools_added': len(added_tools),
-        'added_tools': added_tools
-    }
+            logger.info(
+                f"[TOOL] Tool {tool_id} ({tool_name}) already exists in Player.Tools array"
+            )
+
+    return {"tools_added": len(added_tools), "added_tools": added_tools}
 
 
 def augment_save_dict(
     save_dict: Dict[str, Any],
     *,
-    items_to_add: Dict[str, bool] = None,  # Dict of item type to bool indicating if it should be added
+    items_to_add: Dict[
+        str, bool
+    ] = None,  # Dict of item type to bool indicating if it should be added
     inventory_overrides: Dict[str, str] = None,  # Optional inventory ID overrides
     amount: int = 1,
     mode: str = "missing-only",
-    dict_paths: Dict[str, Optional[Path]] = None,  # Dict of item type to path of dictionary file
+    dict_paths: Dict[
+        str, Optional[Path]
+    ] = None,  # Dict of item type to path of dictionary file
 ) -> Dict[str, int]:
     """
     Augment a save dict in-place; returns counters per category and total.
-    
+
     Args:
         save_dict: The save dictionary to modify
         items_to_add: Dictionary mapping item types to booleans indicating if they should be added
@@ -264,37 +264,41 @@ def augment_save_dict(
     logger.info(f"Dictionary paths: {dict_paths}")
 
     summary = {}
-    
+
     # Process each item type
     for inv_type in InventoryType:
         type_name = inv_type.name.lower()
-        
+
         # Skip if not requested
         if not items_to_add.get(type_name, False):
             logger.info(f"[SKIP] {type_name} (not requested)")
             continue
-            
+
         # Get the dictionary path
         dict_path = dict_paths.get(type_name)
         if not dict_path or not dict_path.exists():
-            logger.warning(f"[ERROR] Dictionary path for {type_name} not found or invalid: {dict_path}")
+            logger.warning(
+                f"[ERROR] Dictionary path for {type_name} not found or invalid: {dict_path}"
+            )
             continue
-            
+
         # Get inventory ID (use override if provided)
         inventory_id = inventory_overrides.get(type_name, inv_type.value)
         logger.info(f"[PROCESS] {type_name} items using inventory {inventory_id}")
-        
+
         # Add items
         ids = parse_ids_from_csharp_dict(dict_path)
         inv = _get_inventory_dict(save_dict, inventory_id)
         added, replaced, skipped = add_items_to_inventory(inv, ids, amount, mode)
-        
+
         # Update summary
         summary[f"{type_name}_added"] = added
         summary[f"{type_name}_replaced"] = replaced
         summary[f"{type_name}_skipped"] = skipped
-        
-        logger.info(f"[COMPLETE] {type_name}: Added {added}, Replaced {replaced}, Skipped {skipped}")
+
+        logger.info(
+            f"[COMPLETE] {type_name}: Added {added}, Replaced {replaced}, Skipped {skipped}"
+        )
 
     logger.info("[DONE] Save dict augmentation complete")
     logger.info(f"[SUMMARY] {summary}")
@@ -309,58 +313,65 @@ def add_item_to_save(
 ) -> bool:
     """
     Add a single item to the save dict, automatically determining the correct inventory.
-    
+
     Args:
         save_dict: The save dictionary to modify
         item_id: The ID of the item to add
         amount: Amount of the item to add
         inventory_id: Optional override for the inventory ID
-    
+
     Returns:
         bool: True if item was added successfully, False otherwise
     """
-    logger.info(f"[START] Adding single item. ID: {item_id}, Amount: {amount}, Override inventory: {inventory_id}")
-    
+    logger.info(
+        f"[START] Adding single item. ID: {item_id}, Amount: {amount}, Override inventory: {inventory_id}"
+    )
+
     # Special case: Tools (80XXXXXX) should be added to Player.Tools array?
     # We obey user request: 110 items (Tools/Activity) go to Inventory 2.
     if str(item_id).startswith("80"):
         logger.info(f"[TOOL] Item {item_id} appears to be a tool")
         return add_specific_tool(save_dict, item_id, False)
-    
+
     if inventory_id is None:
         inventory_id = InventoryType.get_inventory_for_id(item_id)
         if inventory_id is None:
             logger.error(f"[ERROR] Could not determine inventory for item {item_id}")
             return False
-    
+
     logger.info(f"[PROCESS] Using inventory {inventory_id} for item {item_id}")
     inv = _get_inventory_dict(save_dict, inventory_id)
     inv[str(item_id)] = {"Amount": amount}
     logger.info(f"[OK] Successfully added item {item_id} to inventory {inventory_id}")
     return True
 
-def add_item_from_editor(save_data: Dict[str, Any], item_id: int, category: str) -> bool:
+
+def add_item_from_editor(
+    save_data: Dict[str, Any], item_id: int, category: str
+) -> bool:
     """
     Add a single item to the save dict from the editor, automatically determining the correct inventory.
-    
+
     Args:
         save_data: The save dictionary to modify
         item_id: The ID of the item to add
         category: The category of the item
-    
+
     Returns:
         bool: True if item was added successfully, False otherwise
     """
     logger.info(f"[EDITOR] Adding single item. ID: {item_id}, Category: {category}")
-    
+
     # Try getting the correct inventory via ID mapping first
     inventory_id = InventoryType.get_inventory_for_id(item_id)
-    
+
     # Only if mapping FAILED, and it's explicitly TOOLS, try adding to Player.Tools
     if inventory_id is None and category == "TOOLS":
-        logger.info(f"[TOOL] Item {item_id} not mapped to inventory, adding to Player.Tools array")
+        logger.info(
+            f"[TOOL] Item {item_id} not mapped to inventory, adding to Player.Tools array"
+        )
         return add_specific_tool(save_data, item_id, False)
-    
+
     # inventory_id matches...
     if inventory_id is None:
         if category == "PETS":
@@ -369,12 +380,14 @@ def add_item_from_editor(save_data: Dict[str, Any], item_id: int, category: str)
             # True pets (12xxx) usually not in ListInventories.
             # We accept failure here if pattern doesn't match?
             # Or default to 1?
-            logger.warning(f"[WARN] Pet item {item_id} not matched to pattern. Defaulting to None.")
+            logger.warning(
+                f"[WARN] Pet item {item_id} not matched to pattern. Defaulting to None."
+            )
             pass
-            
+
         logger.error(f"[ERROR] Could not determine inventory for item {item_id}")
         return False
-    
+
     logger.info(f"[PROCESS] Using inventory {inventory_id} for item {item_id}")
     inv = _get_inventory_dict(save_data, inventory_id)
     inv[str(item_id)] = {"Amount": 1, "Marker": "ItemMarker_None"}

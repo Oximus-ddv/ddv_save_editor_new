@@ -1,5 +1,4 @@
 {
-  "excel_path": "Disney Dream Light ID List - Mainted by Rubyelf.xlsx",
   "image_zip_path": "img.zip",
   "image_folder_path": "img",
   "max_backups": 10,
@@ -8,9 +7,28 @@
   "cache_size": 200,
   "thumbnail_size": "64x64",
   "preview_size": "128x128",
-  "theme": "dark",
+  "theme": "Dark",
   "hex_key": "62357168683873614a38556c444a557a545a5864325467366d626f3857386e35",
-  "dict_root": "Dict",
-  "data_source": "excel",
-  "danger_zone_enabled": false
+  "dict_root": "",
+  "data_source": "dict",
+  "danger_zone_enabled": false,
+  "font_size": "Medium",
+  "large_scrollbars": true,
+  "category_order": [
+    "Materials",
+    "Gliders",
+    "Furniture",
+    "Motifs",
+    "Trimming",
+    "Activity",
+    "NPC Skins",
+    "Makeup",
+    "Player Inventory",
+    "House Wallpaper",
+    "Tools",
+    "House Skins",
+    "Clothes Other",
+    "Pets"
+  ],
+  "tutorial_shown": true
 }
